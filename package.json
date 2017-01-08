@@ -55,6 +55,7 @@
     "mainVarName": "persist"
   },
   "dependencies": {
+    "lodash": "^4.17.4",
     "playfab-sdk-browser": "github:erosson/playfab-sdk-browser"
   }
 }

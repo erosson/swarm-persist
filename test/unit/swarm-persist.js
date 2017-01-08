@@ -1,4 +1,4 @@
-import persist from '../../src/swarm-persist';
+import persist from '../../src/main'
 
 describe('persist', () => {
   describe('Greet function', () => {
