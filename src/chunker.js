@@ -25,7 +25,7 @@ export class Chunker {
     return zipObject(this.keys(), chunks)
   }
   decode(vdata) {
-    return this._decode(this._normalize(data))
+    return this._decode(this._normalize(vdata))
   }
   _decode(data) {
     return this.keys().map(key => data[key]).filter(c => !!c).join('')
