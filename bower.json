@@ -1,0 +1,17 @@
+{
+  "name": "swarm-persist",
+  "description": "",
+  "main": "dist/swarm-persist.js",
+  "authors": [
+    "Evan <github@erosson.org>"
+  ],
+  "license": "MIT",
+  "homepage": "https://github.com/erosson/swarm-persist",
+  "ignore": [
+    "**/.*",
+    "node_modules",
+    "bower_components",
+    "test",
+    "tests"
+  ]
+}
