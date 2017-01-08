@@ -13,4 +13,7 @@ describe('chunker', () => {
     expect(chunker.encode('abcde').state1).to.equal('cd')
     expect(chunker.encode('abcde').state2).to.equal('e')
   })
+  it('has expected keys', () => {
+    expect(chunker.keys()).to.deep.equal(['state', 'state1', 'state2', 'state3', 'state4', 'state5', 'state6', 'state7', 'state8', 'state9'])
+  })
 })
