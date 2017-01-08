@@ -51,7 +51,10 @@
     "webpack-stream": "3.2.0"
   },
   "babelBoilerplateOptions": {
-    "entryFileName": "swarm-persist.js",
+    "entryFileName": "main.js",
     "mainVarName": "persist"
+  },
+  "dependencies": {
+    "playfab-sdk-browser": "github:erosson/playfab-sdk-browser"
   }
 }
