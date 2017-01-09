@@ -2,7 +2,7 @@ import encoder from './encoder'
 
 const defaultConfig = {
   key: 'swarm-persist-state',
-  localStorage: window.localStorage,
+  localStorage: global.window && window.localStorage,
   encoder,
 }
 

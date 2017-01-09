@@ -1,7 +1,7 @@
 import persist from '../../src/main'
 
 describe('persist', () => {
-  describe('Greet function', () => {
+  xdescribe('Greet function', () => {
     beforeEach(() => {
       spy(persist, 'greet');
       persist.greet();
