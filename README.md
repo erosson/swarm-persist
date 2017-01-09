@@ -21,7 +21,7 @@ You provide a pair of functions that get and set the state of your game. The sta
     function setState(state) {
       window.gameState = {count: state.count};
     }
-    var persister = persist.init({getState: getState, setState: setState});
+    var persister = persist.start({getState: getState, setState: setState});
 
 Swarm-persist will now handle saving and loading your game in `localStorage`:
 * Save the player's game every 5 minutes (configurable)
