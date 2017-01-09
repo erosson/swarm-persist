@@ -1,4 +1,5 @@
 import $ from 'jquery'
+import {assert} from './assert'
 
 const defaultConfig = {
   intervalMillis: 5 * 60 * 1000,
@@ -8,12 +9,6 @@ const defaultConfig = {
   // persister
 }
 
-function assert(val, msg) {
-  if (!val) {
-    throw new Error(msg || 'assert')
-  }
-  return val
-}
 export class Scheduler {
   constructor(config) {
     this.config = Object.assign({}, defaultConfig, config)

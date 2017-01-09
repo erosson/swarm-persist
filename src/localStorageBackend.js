@@ -14,9 +14,12 @@ export class LocalStorageBackend {
     // localstorage is synchronous and doesn't really need promises, but other backends need them
     return new Promise((resolve, reject) => {
       const encoded = this.config.localStorage.getItem(this.config.key)
+      if (encoded === null || encoded === undefined) {
+        return resolve({empty: true})
+      }
       const ret = this.config.encoder.decode(encoded)
       ret.encoded = encoded
-      resolve(ret)
+      return resolve(ret)
     })
   }
   push(state, lastUpdated=Date.now()) {
@@ -26,7 +29,7 @@ export class LocalStorageBackend {
       const encoded = this.config.encoder.encode(ret)
       this.config.localStorage.setItem(this.config.key, encoded)
       ret.encoded = encoded
-      resolve(ret)
+      return resolve(ret)
     })
   }
   clear(lastUpdated=Date.now()) {
