@@ -6,10 +6,12 @@ import {assert} from './assert'
 const defaultConfig = {
   encoder,
   Scheduler,
+  pullOnLoad: true,
   backend: localStorageBackend,
   onFetch: function(){},
   onPush: function(){},
   onClear: function(){},
+  onInit: function(){},
   // getState: required
   // setState: required
 
@@ -27,25 +29,49 @@ export class Persister {
   }
 
   isStarted() { return this.scheduler.isStarted() }
-  start() { return this.scheduler.start() }
-  stop() { return this.scheduler.stop() }
+  stop() { this.scheduler.stop() }
+  start() {
+    let ret
+    this.scheduler.start()
+    if (this.config.backend.init) {
+      if (this.config.pullOnLoad) {
+        // both pull and init. Init includes a fetch.
+        ret = this.config.backend.init().then(fetched => this._pull(fetched))
+      }
+      else {
+      	// init but no pull
+      	ret = this.config.backend.init()
+      }
+    }
+    // pull but no init
+    else if (this.config.pullOnLoad) {
+      ret = this.pull()
+    }
+    // no pull, no init
+    else {
+      ret = new Promise(resolve => resolve())
+    }
+    this.config.onInit(ret)
+    return ret
+  }
 
   fetch() {
     const promise = this.config.backend.fetch()
     this.config.onFetch(promise)
     return promise
   }
+  _pull({state, empty}) {
+    assert(empty || (state !== undefined), 'a persister fetch returned an undefined but nonempty state')
+    if (empty) {
+      // we're looking at a new player - reset their state
+      state = this.config.initState()
+    }
+    this.config.setState(state)
+    assert(this.config.getState() !== undefined, 'persister.initState() is required')
+  }
   pull() {
     const promise = this.config.backend.fetch()
-    promise.then(({state, empty}) => {
-      assert(empty || (state !== undefined), 'a persister fetch returned an undefined but nonempty state')
-      if (empty) {
-        // we're looking at a new player - reset
-        state = this.config.initState()
-      }
-      this.config.setState(state)
-      assert(this.config.getState() !== undefined, 'persister.initState() is required')
-    })
+    promise.then(fetched => this._pull(fetched))
     return promise
   }
   push() {

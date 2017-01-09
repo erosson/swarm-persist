@@ -12,16 +12,19 @@ Periodically save game state/JSON data to one of several backends. Supports onli
 
 ### Automatic save/load
 
-You provide a pair of functions that get and set the state of your game. The state must be a pure JSON object - no functions, Dates, or other classes; nothing that `JSON.stringify()` would miss.
+You provide functions that initialize, get, and set the state of your game. The state must be a pure JSON object - no functions, Dates, or other classes; nothing that `JSON.stringify()` would miss.
 
-    window.gameState = {count: 1};
+    window.gameState = {loading: true};
+    function initState() {
+      return {count: 0};
+    }
     function getState() {
-      return {count: window.gameState.count};
+      return window.gameState;
     }
     function setState(state) {
-      window.gameState = {count: state.count};
+      window.gameState = state;
     }
-    var persister = persist.start({getState: getState, setState: setState});
+    var persister = persist.start({initState: initState, getState: getState, setState: setState});
 
 Swarm-persist will now handle saving and loading your game in `localStorage`:
 * Save the player's game every 5 minutes (configurable)
@@ -52,7 +55,7 @@ Instead of `localStorage`, you can use PlayFab as a free backend for online save
     <script src="//download.playfab.com/PlayFabClientApi.js"></script>
 
     var playfab = persist.PlayFabBackend({titleId: '5h1t'})   // replace with your titleid
-    var persister = persist.init({getState: getState, setState: setState, backend: playfab})
+    var persister = persist.init({initState: initState, getState: getState, setState: setState, backend: playfab})
 
 Swarm-persist will automatically create guest accounts on PlayFab for users who haven't signed in yet:
 

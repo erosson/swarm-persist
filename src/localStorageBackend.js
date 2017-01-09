@@ -39,5 +39,3 @@ export class LocalStorageBackend {
     })
   }
 }
-
-export default new LocalStorageBackend()

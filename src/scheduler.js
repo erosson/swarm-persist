@@ -5,7 +5,6 @@ const defaultConfig = {
   intervalMillis: 5 * 60 * 1000,
   pushOnInterval: true,
   pushOnClose: true,
-  pullOnLoad: true,
   // persister
 }
 
@@ -28,9 +27,6 @@ export class Scheduler {
     }
     if (this.config.pushOnClose) {
       $(window).on('unload', this._push)
-    }
-    if (this.config.pullOnLoad) {
-      this.config.persister.pull()
     }
     assert(this.isStarted())
   }
