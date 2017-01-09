@@ -1,9 +1,3 @@
 export {default as chunker, Chunker} from './chunker'
-
-const persist = {
-  greet() {
-    return 'hello';
-  }
-};
-
-export default persist;
+export {default as encoder, Encoder} from './encoder'
+export {Persister, start} from './persister'
