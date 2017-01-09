@@ -14,6 +14,8 @@ var persister = persist.start({
   // How often we push to localstorage. Default is slower, but a faster interval
   // of 10 seconds is convenient for this demo.
   intervalMillis: 10 * 1000,
+  // Save to a different localstorage field. (Avoids conflict with barebones demo, too.)
+  key: 'swarm-persist-localstorage-demo',
   // onPush(), onFetch(), onClear() are optional, but allow for error handling
   // and push status updates.
   onPush: function(promise) {
