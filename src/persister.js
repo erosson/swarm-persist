@@ -74,6 +74,13 @@ export class Persister {
     this.config.onPush(ret)
     return ret
   }
+  // some backends handle the last push, during page unload, differently
+  _lastPush() {
+    const pushFn = this.config.backend.lastPush || this.config.backend.push
+    const ret = pushFn.call(this.config.backend, this.config.getState())
+    this.config.onPush(ret)
+    return ret
+  }
   clear() {
     const ret = this.config.backend.clear()
     this.config.onClear(ret)

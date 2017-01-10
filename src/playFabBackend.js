@@ -151,6 +151,35 @@ export class PlayFabBackend {
       })
     })
   }
+  lastPush(state) {
+    // Send the last push synchronously. Pushing during page unload is tricky -
+    // async XHRs fail in unload handlers, so normally, save-on-close doesn't.
+    // Synchronous requests block the UI for a moment, but usually succeed.
+    // UI blocking is awful, but saving the game on close is just that important.
+    // 
+    // PlayFab's API is pretty uncooperative here. We can't officially configure
+    // its calls to be synchronous, but we can monkeypatch XMLHTTPRequest.
+    // We're manipulating the XMLHttpRequest.open in this file, ExecuteRequest():
+    // https://github.com/PlayFab/JavaScriptSDK/blob/master/PlayFabSDK/PlayFabClientApi.js
+    //
+    // sendBeacon() would be better - no UI block. It's much harder to patch in to
+    // PlayFab's API though, and browser support is less common. Maybe later, but 
+    // this is a fine start.
+    // https://developer.mozilla.org/en-US/docs/Web/API/Navigator/sendBeacon
+    const fn = window.XMLHttpRequest.prototype.open
+    window.XMLHttpRequest.prototype.open = function(method, url, async) {
+      console.log('hijacked xmlhttprequest.open, sync calls only')
+      return fn.call(this, method, url, false)
+    }
+    // clean up after myself, both for success and error.
+    // Maybe not necessary since the page is closing, but it's a good habit.
+    const cleanup = res => {
+      window.XMLHttpRequest.prototype.open = fn
+      console.log('un-hijacked xmlhttprequest.open, async allowed again')
+      return res
+    }
+    return this.push(state).then(cleanup, cleanup)
+  }
   // https://api.playfab.com/Documentation/Client/method/UpdateUserData
   push(state) {
     // localstorage is synchronous and doesn't really need promises, but other backends need them

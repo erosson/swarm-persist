@@ -14,6 +14,9 @@ export class Scheduler {
     this._push = () => {
       return this.config.persister.push()
     }
+    this._lastPush = () => {
+      return this.config.persister._lastPush()
+    }
   }
   isStarted() {
     return !!this.runner
@@ -26,7 +29,7 @@ export class Scheduler {
       this.runner.interval = window.setInterval(this._push, this.config.intervalMillis)
     }
     if (this.config.pushOnClose) {
-      $(window).on('unload', this._push)
+      $(window).on('unload', this._lastPush)
     }
     assert(this.isStarted())
   }
@@ -36,7 +39,7 @@ export class Scheduler {
       window.clearInterval(this.runner.interval)
     }
     if (this.config.pushOnClose) {
-      $(window).off('unload', this._push)
+      $(window).off('unload', this._lastPush)
     }
     delete this.runner
     assert(!this.isStarted())
