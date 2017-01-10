@@ -1,6 +1,7 @@
 // All the swarm-persist code needed to keep localstorage updated.
 var persister = new persist.Persister({
   // initState/getState/setState are the only required properties.
+  // They're identical to the localStorage version.
   initState: function() {
     return {count: 0};
   },
@@ -14,7 +15,7 @@ var persister = new persist.Persister({
   // Playfab configuration.
   backend: new persist.PlayFabBackend({titleId: '9F7C'}),
   // How often we push to playfab.
-  intervalMillis: 60 * 1000,
+  intervalMillis: 10 * 1000,
   // onPush(), onFetch(), onClear() are optional, but allow for error handling
   // and push status updates.
   onPush: function(promise) {
@@ -43,11 +44,10 @@ var persister = new persist.Persister({
       console.error('clear error', error)
     });
   },
-  onInit: function(promise) {
-  },
 });
-persister.start().then(function(){
-  console.log('started', persister.config.backend.auth.user);
+// Can't use persist.start() if we're waiting on start(). new Persister().start() returns the promise
+persister.start().then(function(res){
+  console.log('started', res, persister.config.backend.auth.user);
 });
 
 // The onclick handler for the "persist now" button.

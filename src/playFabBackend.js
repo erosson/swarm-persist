@@ -113,12 +113,15 @@ export class PlayFabBackend {
       lastUpdated: new Date(container.LastUpdated).getTime(),
     }
   }
-  // https://api.playfab.com/Documentation/Client/method/LoginWithCustomId
-  init() {
+  // https://api.playfab.com/Documentation/Client/method/LoginWithCustomID
+  start() {
     // login and fetch in one step
     return new Promise((resolve, reject) => {
       this.auth.loginOrCreate().then(res => {
-        resolve(this._parseFetchUserData(res.data.InfoResultPayload.UserData))
+        // login returns fetch data plus user account data
+        let ret = this._parseFetchUserData(res.data.InfoResultPayload.UserData)
+        ret.user = res.data.InfoResultPayload.AccountInfo
+        resolve(ret)
       }, error => reject(error))
     })
   }

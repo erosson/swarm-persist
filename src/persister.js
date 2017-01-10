@@ -27,17 +27,27 @@ export class Persister {
   }
 
   isStarted() { return this.scheduler.isStarted() }
-  stop() { this.scheduler.stop() }
+  stop() {
+    this.scheduler.stop()
+    if (this.config.backend.stop) {
+      return this.config.backend.stop()
+    }
+  }
   start() {
-    let promise
-    this.scheduler.start()
-    if (this.config.backend.init) {
-      promise = this.config.backend.init().then(fetched => this._pull(fetched))
+    const afterPull = fetched => {
+      this.scheduler.start()
+      return fetched
+    }
+    if (this.config.backend.start) {
+      // start() is expected to fetch, to support fetch-and-login in one request.
+      return this.config.backend.start().then(fetched => {
+        this._pull(fetched)
+        return afterPull(fetched)
+      })
     }
     else {
-      promise = this.pull()
+      return this.pull().then(afterPull)
     }
-    return promise
   }
 
   fetch() {
