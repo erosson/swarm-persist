@@ -4,6 +4,7 @@ import uuid from 'uuid'
 const defaultConfig = {
   localStorageKey: 'swarm-persist-playfab-state',
   localStorage: global.window && window.localStorage,
+  stateKey: 'state',
 }
 
 class PlayFabBackendAuth {
@@ -104,12 +105,12 @@ export class PlayFabBackend {
   _parseFetchUserData(userdata={}) {
     // TODO configurable key/prefix
     // TODO chunking
-    const container = userdata.state
+    const container = userdata[this.config.stateKey]
     if (!container) {
       return {empty: true}
     }
     return {
-      state: JSON.parse(container.Value),
+      [this.config.stateKey]: JSON.parse(container.Value),
       lastUpdated: new Date(container.LastUpdated).getTime(),
     }
   }
@@ -142,7 +143,7 @@ export class PlayFabBackend {
   push(state) {
     // localstorage is synchronous and doesn't really need promises, but other backends need them
     return new Promise((resolve, reject) => {
-      PlayFabClientSDK.UpdateUserData({Data: {state: JSON.stringify(state)}}, (res, error) => {
+      PlayFabClientSDK.UpdateUserData({Data: {[this.config.stateKey]: JSON.stringify(state)}}, (res, error) => {
         if (error) {
           reject(error)
         }
@@ -155,7 +156,7 @@ export class PlayFabBackend {
   // https://api.playfab.com/Documentation/Client/method/UpdateUserData
   clear() {
     return new Promise((resolve, reject) => {
-      PlayFabClientSDK.UpdateUserData({KeysToRemove: ['state']}, (res, error) => {
+      PlayFabClientSDK.UpdateUserData({KeysToRemove: [this.config.stateKey]}, (res, error) => {
         if (error) {
           reject(error)
         }
