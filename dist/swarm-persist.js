@@ -90,7 +90,25 @@ return /******/ (function(modules) { // webpackBootstrap
 	  }
 	});
 	
-	var _persister = __webpack_require__(133);
+	var _localStorageBackend = __webpack_require__(134);
+	
+	Object.defineProperty(exports, 'LocalStorageBackend', {
+	  enumerable: true,
+	  get: function get() {
+	    return _localStorageBackend.LocalStorageBackend;
+	  }
+	});
+	
+	var _playFabBackend = __webpack_require__(135);
+	
+	Object.defineProperty(exports, 'PlayFabBackend', {
+	  enumerable: true,
+	  get: function get() {
+	    return _playFabBackend.PlayFabBackend;
+	  }
+	});
+	
+	var _persister = __webpack_require__(142);
 	
 	Object.defineProperty(exports, 'Persister', {
 	  enumerable: true,
@@ -4468,34 +4486,41 @@ return /******/ (function(modules) { // webpackBootstrap
 
 /***/ },
 /* 132 */
-/***/ function(module, exports) {
+/***/ function(module, exports, __webpack_require__) {
 
-	"use strict";
+	'use strict';
 	
 	Object.defineProperty(exports, "__esModule", {
 	  value: true
 	});
+	exports.Encoder = undefined;
 	
 	var _createClass = function () { function defineProperties(target, props) { for (var i = 0; i < props.length; i++) { var descriptor = props[i]; descriptor.enumerable = descriptor.enumerable || false; descriptor.configurable = true; if ("value" in descriptor) descriptor.writable = true; Object.defineProperty(target, descriptor.key, descriptor); } } return function (Constructor, protoProps, staticProps) { if (protoProps) defineProperties(Constructor.prototype, protoProps); if (staticProps) defineProperties(Constructor, staticProps); return Constructor; }; }();
+	
+	var _lzString = __webpack_require__(133);
+	
+	var _lzString2 = _interopRequireDefault(_lzString);
+	
+	function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
 	
 	function _classCallCheck(instance, Constructor) { if (!(instance instanceof Constructor)) { throw new TypeError("Cannot call a class as a function"); } }
 	
 	// Encode JSON state for import/export. Should not be human readable. No side effects.
-	// TODO: lz-string for compression
+	// http://pieroxy.net/blog/pages/lz-string/guide.html
 	var Encoder = exports.Encoder = function () {
 	  function Encoder() {
 	    _classCallCheck(this, Encoder);
 	  }
 	
 	  _createClass(Encoder, [{
-	    key: "encode",
+	    key: 'encode',
 	    value: function encode(json) {
-	      return btoa(JSON.stringify(json));
+	      return _lzString2.default.compressToUTF16(JSON.stringify(json));
 	    }
 	  }, {
-	    key: "decode",
+	    key: 'decode',
 	    value: function decode(encoded) {
-	      return JSON.parse(atob(encoded));
+	      return JSON.parse(_lzString2.default.decompressFromUTF16(encoded));
 	    }
 	  }]);
 	
@@ -4508,134 +4533,508 @@ return /******/ (function(modules) { // webpackBootstrap
 /* 133 */
 /***/ function(module, exports, __webpack_require__) {
 
-	'use strict';
+	var __WEBPACK_AMD_DEFINE_RESULT__;// Copyright (c) 2013 Pieroxy <pieroxy@pieroxy.net>
+	// This work is free. You can redistribute it and/or modify it
+	// under the terms of the WTFPL, Version 2
+	// For more information see LICENSE.txt or http://www.wtfpl.net/
+	//
+	// For more information, the home page:
+	// http://pieroxy.net/blog/pages/lz-string/testing.html
+	//
+	// LZ-based compression algorithm, version 1.4.4
+	var LZString = (function() {
 	
-	Object.defineProperty(exports, "__esModule", {
-	  value: true
-	});
-	exports.Persister = undefined;
+	// private property
+	var f = String.fromCharCode;
+	var keyStrBase64 = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=";
+	var keyStrUriSafe = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+-$";
+	var baseReverseDic = {};
 	
-	var _createClass = function () { function defineProperties(target, props) { for (var i = 0; i < props.length; i++) { var descriptor = props[i]; descriptor.enumerable = descriptor.enumerable || false; descriptor.configurable = true; if ("value" in descriptor) descriptor.writable = true; Object.defineProperty(target, descriptor.key, descriptor); } } return function (Constructor, protoProps, staticProps) { if (protoProps) defineProperties(Constructor.prototype, protoProps); if (staticProps) defineProperties(Constructor, staticProps); return Constructor; }; }();
-	
-	exports.start = start;
-	
-	var _encoder = __webpack_require__(132);
-	
-	var _encoder2 = _interopRequireDefault(_encoder);
-	
-	var _localStorageBackend = __webpack_require__(134);
-	
-	var _localStorageBackend2 = _interopRequireDefault(_localStorageBackend);
-	
-	var _scheduler = __webpack_require__(135);
-	
-	var _assert = __webpack_require__(137);
-	
-	function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
-	
-	function _classCallCheck(instance, Constructor) { if (!(instance instanceof Constructor)) { throw new TypeError("Cannot call a class as a function"); } }
-	
-	var defaultConfig = {
-	  encoder: _encoder2.default,
-	  Scheduler: _scheduler.Scheduler,
-	  backend: _localStorageBackend2.default,
-	  onFetch: function onFetch() {},
-	  onPush: function onPush() {},
-	  onClear: function onClear() {},
-	  // getState: required
-	  // setState: required
-	
-	  // initState is documented as required, but it's actually not. setState with
-	  // a default is acceptable instead, because that's a nicer way to do things
-	  // when there's es6 support. It matches redux too. Example:
-	  // function setState(state={count: 0}) { ... }
-	  initState: function initState() {}
-	};
-	
-	var Persister = exports.Persister = function () {
-	  function Persister(config) {
-	    _classCallCheck(this, Persister);
-	
-	    this.config = Object.assign({}, defaultConfig, config);
-	    this.scheduler = new this.config.Scheduler(Object.assign({}, config, { persister: this }));
+	function getBaseValue(alphabet, character) {
+	  if (!baseReverseDic[alphabet]) {
+	    baseReverseDic[alphabet] = {};
+	    for (var i=0 ; i<alphabet.length ; i++) {
+	      baseReverseDic[alphabet][alphabet.charAt(i)] = i;
+	    }
 	  }
-	
-	  _createClass(Persister, [{
-	    key: 'isStarted',
-	    value: function isStarted() {
-	      return this.scheduler.isStarted();
-	    }
-	  }, {
-	    key: 'start',
-	    value: function start() {
-	      return this.scheduler.start();
-	    }
-	  }, {
-	    key: 'stop',
-	    value: function stop() {
-	      return this.scheduler.stop();
-	    }
-	  }, {
-	    key: 'fetch',
-	    value: function fetch() {
-	      var promise = this.config.backend.fetch();
-	      this.config.onFetch(promise);
-	      return promise;
-	    }
-	  }, {
-	    key: 'pull',
-	    value: function pull() {
-	      var _this = this;
-	
-	      var promise = this.config.backend.fetch();
-	      promise.then(function (_ref) {
-	        var state = _ref.state,
-	            empty = _ref.empty;
-	
-	        (0, _assert.assert)(empty || state !== undefined, 'a persister fetch returned an undefined but nonempty state');
-	        if (empty) {
-	          // we're looking at a new player - reset
-	          state = _this.config.initState();
-	        }
-	        _this.config.setState(state);
-	        (0, _assert.assert)(_this.config.getState() !== undefined, 'persister.initState() is required');
-	      });
-	      return promise;
-	    }
-	  }, {
-	    key: 'push',
-	    value: function push() {
-	      var ret = this.config.backend.push(this.config.getState());
-	      this.config.onPush(ret);
-	      return ret;
-	    }
-	  }, {
-	    key: 'clear',
-	    value: function clear() {
-	      var ret = this.config.backend.clear();
-	      this.config.onClear(ret);
-	      return ret;
-	    }
-	  }, {
-	    key: 'export',
-	    value: function _export() {
-	      return this.config.encoder.encode(this.config.getState());
-	    }
-	  }, {
-	    key: 'import',
-	    value: function _import(encoded) {
-	      this.config.setState(this.config.encoder.decode(encoded));
-	    }
-	  }]);
-	
-	  return Persister;
-	}();
-	
-	function start(config) {
-	  var ret = new Persister(config);
-	  ret.start();
-	  return ret;
+	  return baseReverseDic[alphabet][character];
 	}
+	
+	var LZString = {
+	  compressToBase64 : function (input) {
+	    if (input == null) return "";
+	    var res = LZString._compress(input, 6, function(a){return keyStrBase64.charAt(a);});
+	    switch (res.length % 4) { // To produce valid Base64
+	    default: // When could this happen ?
+	    case 0 : return res;
+	    case 1 : return res+"===";
+	    case 2 : return res+"==";
+	    case 3 : return res+"=";
+	    }
+	  },
+	
+	  decompressFromBase64 : function (input) {
+	    if (input == null) return "";
+	    if (input == "") return null;
+	    return LZString._decompress(input.length, 32, function(index) { return getBaseValue(keyStrBase64, input.charAt(index)); });
+	  },
+	
+	  compressToUTF16 : function (input) {
+	    if (input == null) return "";
+	    return LZString._compress(input, 15, function(a){return f(a+32);}) + " ";
+	  },
+	
+	  decompressFromUTF16: function (compressed) {
+	    if (compressed == null) return "";
+	    if (compressed == "") return null;
+	    return LZString._decompress(compressed.length, 16384, function(index) { return compressed.charCodeAt(index) - 32; });
+	  },
+	
+	  //compress into uint8array (UCS-2 big endian format)
+	  compressToUint8Array: function (uncompressed) {
+	    var compressed = LZString.compress(uncompressed);
+	    var buf=new Uint8Array(compressed.length*2); // 2 bytes per character
+	
+	    for (var i=0, TotalLen=compressed.length; i<TotalLen; i++) {
+	      var current_value = compressed.charCodeAt(i);
+	      buf[i*2] = current_value >>> 8;
+	      buf[i*2+1] = current_value % 256;
+	    }
+	    return buf;
+	  },
+	
+	  //decompress from uint8array (UCS-2 big endian format)
+	  decompressFromUint8Array:function (compressed) {
+	    if (compressed===null || compressed===undefined){
+	        return LZString.decompress(compressed);
+	    } else {
+	        var buf=new Array(compressed.length/2); // 2 bytes per character
+	        for (var i=0, TotalLen=buf.length; i<TotalLen; i++) {
+	          buf[i]=compressed[i*2]*256+compressed[i*2+1];
+	        }
+	
+	        var result = [];
+	        buf.forEach(function (c) {
+	          result.push(f(c));
+	        });
+	        return LZString.decompress(result.join(''));
+	
+	    }
+	
+	  },
+	
+	
+	  //compress into a string that is already URI encoded
+	  compressToEncodedURIComponent: function (input) {
+	    if (input == null) return "";
+	    return LZString._compress(input, 6, function(a){return keyStrUriSafe.charAt(a);});
+	  },
+	
+	  //decompress from an output of compressToEncodedURIComponent
+	  decompressFromEncodedURIComponent:function (input) {
+	    if (input == null) return "";
+	    if (input == "") return null;
+	    input = input.replace(/ /g, "+");
+	    return LZString._decompress(input.length, 32, function(index) { return getBaseValue(keyStrUriSafe, input.charAt(index)); });
+	  },
+	
+	  compress: function (uncompressed) {
+	    return LZString._compress(uncompressed, 16, function(a){return f(a);});
+	  },
+	  _compress: function (uncompressed, bitsPerChar, getCharFromInt) {
+	    if (uncompressed == null) return "";
+	    var i, value,
+	        context_dictionary= {},
+	        context_dictionaryToCreate= {},
+	        context_c="",
+	        context_wc="",
+	        context_w="",
+	        context_enlargeIn= 2, // Compensate for the first entry which should not count
+	        context_dictSize= 3,
+	        context_numBits= 2,
+	        context_data=[],
+	        context_data_val=0,
+	        context_data_position=0,
+	        ii;
+	
+	    for (ii = 0; ii < uncompressed.length; ii += 1) {
+	      context_c = uncompressed.charAt(ii);
+	      if (!Object.prototype.hasOwnProperty.call(context_dictionary,context_c)) {
+	        context_dictionary[context_c] = context_dictSize++;
+	        context_dictionaryToCreate[context_c] = true;
+	      }
+	
+	      context_wc = context_w + context_c;
+	      if (Object.prototype.hasOwnProperty.call(context_dictionary,context_wc)) {
+	        context_w = context_wc;
+	      } else {
+	        if (Object.prototype.hasOwnProperty.call(context_dictionaryToCreate,context_w)) {
+	          if (context_w.charCodeAt(0)<256) {
+	            for (i=0 ; i<context_numBits ; i++) {
+	              context_data_val = (context_data_val << 1);
+	              if (context_data_position == bitsPerChar-1) {
+	                context_data_position = 0;
+	                context_data.push(getCharFromInt(context_data_val));
+	                context_data_val = 0;
+	              } else {
+	                context_data_position++;
+	              }
+	            }
+	            value = context_w.charCodeAt(0);
+	            for (i=0 ; i<8 ; i++) {
+	              context_data_val = (context_data_val << 1) | (value&1);
+	              if (context_data_position == bitsPerChar-1) {
+	                context_data_position = 0;
+	                context_data.push(getCharFromInt(context_data_val));
+	                context_data_val = 0;
+	              } else {
+	                context_data_position++;
+	              }
+	              value = value >> 1;
+	            }
+	          } else {
+	            value = 1;
+	            for (i=0 ; i<context_numBits ; i++) {
+	              context_data_val = (context_data_val << 1) | value;
+	              if (context_data_position ==bitsPerChar-1) {
+	                context_data_position = 0;
+	                context_data.push(getCharFromInt(context_data_val));
+	                context_data_val = 0;
+	              } else {
+	                context_data_position++;
+	              }
+	              value = 0;
+	            }
+	            value = context_w.charCodeAt(0);
+	            for (i=0 ; i<16 ; i++) {
+	              context_data_val = (context_data_val << 1) | (value&1);
+	              if (context_data_position == bitsPerChar-1) {
+	                context_data_position = 0;
+	                context_data.push(getCharFromInt(context_data_val));
+	                context_data_val = 0;
+	              } else {
+	                context_data_position++;
+	              }
+	              value = value >> 1;
+	            }
+	          }
+	          context_enlargeIn--;
+	          if (context_enlargeIn == 0) {
+	            context_enlargeIn = Math.pow(2, context_numBits);
+	            context_numBits++;
+	          }
+	          delete context_dictionaryToCreate[context_w];
+	        } else {
+	          value = context_dictionary[context_w];
+	          for (i=0 ; i<context_numBits ; i++) {
+	            context_data_val = (context_data_val << 1) | (value&1);
+	            if (context_data_position == bitsPerChar-1) {
+	              context_data_position = 0;
+	              context_data.push(getCharFromInt(context_data_val));
+	              context_data_val = 0;
+	            } else {
+	              context_data_position++;
+	            }
+	            value = value >> 1;
+	          }
+	
+	
+	        }
+	        context_enlargeIn--;
+	        if (context_enlargeIn == 0) {
+	          context_enlargeIn = Math.pow(2, context_numBits);
+	          context_numBits++;
+	        }
+	        // Add wc to the dictionary.
+	        context_dictionary[context_wc] = context_dictSize++;
+	        context_w = String(context_c);
+	      }
+	    }
+	
+	    // Output the code for w.
+	    if (context_w !== "") {
+	      if (Object.prototype.hasOwnProperty.call(context_dictionaryToCreate,context_w)) {
+	        if (context_w.charCodeAt(0)<256) {
+	          for (i=0 ; i<context_numBits ; i++) {
+	            context_data_val = (context_data_val << 1);
+	            if (context_data_position == bitsPerChar-1) {
+	              context_data_position = 0;
+	              context_data.push(getCharFromInt(context_data_val));
+	              context_data_val = 0;
+	            } else {
+	              context_data_position++;
+	            }
+	          }
+	          value = context_w.charCodeAt(0);
+	          for (i=0 ; i<8 ; i++) {
+	            context_data_val = (context_data_val << 1) | (value&1);
+	            if (context_data_position == bitsPerChar-1) {
+	              context_data_position = 0;
+	              context_data.push(getCharFromInt(context_data_val));
+	              context_data_val = 0;
+	            } else {
+	              context_data_position++;
+	            }
+	            value = value >> 1;
+	          }
+	        } else {
+	          value = 1;
+	          for (i=0 ; i<context_numBits ; i++) {
+	            context_data_val = (context_data_val << 1) | value;
+	            if (context_data_position == bitsPerChar-1) {
+	              context_data_position = 0;
+	              context_data.push(getCharFromInt(context_data_val));
+	              context_data_val = 0;
+	            } else {
+	              context_data_position++;
+	            }
+	            value = 0;
+	          }
+	          value = context_w.charCodeAt(0);
+	          for (i=0 ; i<16 ; i++) {
+	            context_data_val = (context_data_val << 1) | (value&1);
+	            if (context_data_position == bitsPerChar-1) {
+	              context_data_position = 0;
+	              context_data.push(getCharFromInt(context_data_val));
+	              context_data_val = 0;
+	            } else {
+	              context_data_position++;
+	            }
+	            value = value >> 1;
+	          }
+	        }
+	        context_enlargeIn--;
+	        if (context_enlargeIn == 0) {
+	          context_enlargeIn = Math.pow(2, context_numBits);
+	          context_numBits++;
+	        }
+	        delete context_dictionaryToCreate[context_w];
+	      } else {
+	        value = context_dictionary[context_w];
+	        for (i=0 ; i<context_numBits ; i++) {
+	          context_data_val = (context_data_val << 1) | (value&1);
+	          if (context_data_position == bitsPerChar-1) {
+	            context_data_position = 0;
+	            context_data.push(getCharFromInt(context_data_val));
+	            context_data_val = 0;
+	          } else {
+	            context_data_position++;
+	          }
+	          value = value >> 1;
+	        }
+	
+	
+	      }
+	      context_enlargeIn--;
+	      if (context_enlargeIn == 0) {
+	        context_enlargeIn = Math.pow(2, context_numBits);
+	        context_numBits++;
+	      }
+	    }
+	
+	    // Mark the end of the stream
+	    value = 2;
+	    for (i=0 ; i<context_numBits ; i++) {
+	      context_data_val = (context_data_val << 1) | (value&1);
+	      if (context_data_position == bitsPerChar-1) {
+	        context_data_position = 0;
+	        context_data.push(getCharFromInt(context_data_val));
+	        context_data_val = 0;
+	      } else {
+	        context_data_position++;
+	      }
+	      value = value >> 1;
+	    }
+	
+	    // Flush the last char
+	    while (true) {
+	      context_data_val = (context_data_val << 1);
+	      if (context_data_position == bitsPerChar-1) {
+	        context_data.push(getCharFromInt(context_data_val));
+	        break;
+	      }
+	      else context_data_position++;
+	    }
+	    return context_data.join('');
+	  },
+	
+	  decompress: function (compressed) {
+	    if (compressed == null) return "";
+	    if (compressed == "") return null;
+	    return LZString._decompress(compressed.length, 32768, function(index) { return compressed.charCodeAt(index); });
+	  },
+	
+	  _decompress: function (length, resetValue, getNextValue) {
+	    var dictionary = [],
+	        next,
+	        enlargeIn = 4,
+	        dictSize = 4,
+	        numBits = 3,
+	        entry = "",
+	        result = [],
+	        i,
+	        w,
+	        bits, resb, maxpower, power,
+	        c,
+	        data = {val:getNextValue(0), position:resetValue, index:1};
+	
+	    for (i = 0; i < 3; i += 1) {
+	      dictionary[i] = i;
+	    }
+	
+	    bits = 0;
+	    maxpower = Math.pow(2,2);
+	    power=1;
+	    while (power!=maxpower) {
+	      resb = data.val & data.position;
+	      data.position >>= 1;
+	      if (data.position == 0) {
+	        data.position = resetValue;
+	        data.val = getNextValue(data.index++);
+	      }
+	      bits |= (resb>0 ? 1 : 0) * power;
+	      power <<= 1;
+	    }
+	
+	    switch (next = bits) {
+	      case 0:
+	          bits = 0;
+	          maxpower = Math.pow(2,8);
+	          power=1;
+	          while (power!=maxpower) {
+	            resb = data.val & data.position;
+	            data.position >>= 1;
+	            if (data.position == 0) {
+	              data.position = resetValue;
+	              data.val = getNextValue(data.index++);
+	            }
+	            bits |= (resb>0 ? 1 : 0) * power;
+	            power <<= 1;
+	          }
+	        c = f(bits);
+	        break;
+	      case 1:
+	          bits = 0;
+	          maxpower = Math.pow(2,16);
+	          power=1;
+	          while (power!=maxpower) {
+	            resb = data.val & data.position;
+	            data.position >>= 1;
+	            if (data.position == 0) {
+	              data.position = resetValue;
+	              data.val = getNextValue(data.index++);
+	            }
+	            bits |= (resb>0 ? 1 : 0) * power;
+	            power <<= 1;
+	          }
+	        c = f(bits);
+	        break;
+	      case 2:
+	        return "";
+	    }
+	    dictionary[3] = c;
+	    w = c;
+	    result.push(c);
+	    while (true) {
+	      if (data.index > length) {
+	        return "";
+	      }
+	
+	      bits = 0;
+	      maxpower = Math.pow(2,numBits);
+	      power=1;
+	      while (power!=maxpower) {
+	        resb = data.val & data.position;
+	        data.position >>= 1;
+	        if (data.position == 0) {
+	          data.position = resetValue;
+	          data.val = getNextValue(data.index++);
+	        }
+	        bits |= (resb>0 ? 1 : 0) * power;
+	        power <<= 1;
+	      }
+	
+	      switch (c = bits) {
+	        case 0:
+	          bits = 0;
+	          maxpower = Math.pow(2,8);
+	          power=1;
+	          while (power!=maxpower) {
+	            resb = data.val & data.position;
+	            data.position >>= 1;
+	            if (data.position == 0) {
+	              data.position = resetValue;
+	              data.val = getNextValue(data.index++);
+	            }
+	            bits |= (resb>0 ? 1 : 0) * power;
+	            power <<= 1;
+	          }
+	
+	          dictionary[dictSize++] = f(bits);
+	          c = dictSize-1;
+	          enlargeIn--;
+	          break;
+	        case 1:
+	          bits = 0;
+	          maxpower = Math.pow(2,16);
+	          power=1;
+	          while (power!=maxpower) {
+	            resb = data.val & data.position;
+	            data.position >>= 1;
+	            if (data.position == 0) {
+	              data.position = resetValue;
+	              data.val = getNextValue(data.index++);
+	            }
+	            bits |= (resb>0 ? 1 : 0) * power;
+	            power <<= 1;
+	          }
+	          dictionary[dictSize++] = f(bits);
+	          c = dictSize-1;
+	          enlargeIn--;
+	          break;
+	        case 2:
+	          return result.join('');
+	      }
+	
+	      if (enlargeIn == 0) {
+	        enlargeIn = Math.pow(2, numBits);
+	        numBits++;
+	      }
+	
+	      if (dictionary[c]) {
+	        entry = dictionary[c];
+	      } else {
+	        if (c === dictSize) {
+	          entry = w + w.charAt(0);
+	        } else {
+	          return null;
+	        }
+	      }
+	      result.push(entry);
+	
+	      // Add w+entry[0] to the dictionary.
+	      dictionary[dictSize++] = w + entry.charAt(0);
+	      enlargeIn--;
+	
+	      w = entry;
+	
+	      if (enlargeIn == 0) {
+	        enlargeIn = Math.pow(2, numBits);
+	        numBits++;
+	      }
+	
+	    }
+	  }
+	};
+	  return LZString;
+	})();
+	
+	if (true) {
+	  !(__WEBPACK_AMD_DEFINE_RESULT__ = function () { return LZString; }.call(exports, __webpack_require__, exports, module), __WEBPACK_AMD_DEFINE_RESULT__ !== undefined && (module.exports = __WEBPACK_AMD_DEFINE_RESULT__));
+	} else if( typeof module !== 'undefined' && module != null ) {
+	  module.exports = LZString
+	}
+
 
 /***/ },
 /* 134 */
@@ -4716,15 +5115,1774 @@ return /******/ (function(modules) { // webpackBootstrap
 	      });
 	    }
 	  }]);
-	
+
 	  return LocalStorageBackend;
 	}();
-	
-	exports.default = new LocalStorageBackend();
 	/* WEBPACK VAR INJECTION */}.call(exports, (function() { return this; }())))
 
 /***/ },
 /* 135 */
+/***/ function(module, exports, __webpack_require__) {
+
+	/* WEBPACK VAR INJECTION */(function(global) {'use strict';
+	
+	Object.defineProperty(exports, "__esModule", {
+	  value: true
+	});
+	exports.PlayFabBackend = undefined;
+	
+	var _createClass = function () { function defineProperties(target, props) { for (var i = 0; i < props.length; i++) { var descriptor = props[i]; descriptor.enumerable = descriptor.enumerable || false; descriptor.configurable = true; if ("value" in descriptor) descriptor.writable = true; Object.defineProperty(target, descriptor.key, descriptor); } } return function (Constructor, protoProps, staticProps) { if (protoProps) defineProperties(Constructor.prototype, protoProps); if (staticProps) defineProperties(Constructor, staticProps); return Constructor; }; }();
+	
+	var _playfabSdkBrowser = __webpack_require__(136);
+	
+	var _uuid = __webpack_require__(137);
+	
+	var _uuid2 = _interopRequireDefault(_uuid);
+	
+	function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
+	
+	function _defineProperty(obj, key, value) { if (key in obj) { Object.defineProperty(obj, key, { value: value, enumerable: true, configurable: true, writable: true }); } else { obj[key] = value; } return obj; }
+	
+	function _classCallCheck(instance, Constructor) { if (!(instance instanceof Constructor)) { throw new TypeError("Cannot call a class as a function"); } }
+	
+	if (global.window) {
+	  // expose playfab apis to user code, for login/signup
+	  window.PlayFabClientSDK = _playfabSdkBrowser.PlayFabClientSDK;
+	  window.PlayFab = _playfabSdkBrowser.PlayFab;
+	}
+	
+	var defaultConfig = {
+	  localStorageKey: 'swarm-persist-playfab-state',
+	  localStorage: global.window && window.localStorage,
+	  stateKey: 'state',
+	  // try to refresh the login every 4 hours. Way more often than needed for a
+	  // 24 hour expiry, but it doesn't hurt.
+	  loginRefreshMillis: 4 * 60 * 60 * 1000
+	};
+	
+	var PlayFabBackendAuth = function () {
+	  function PlayFabBackendAuth(localStorage, key, titleId) {
+	    _classCallCheck(this, PlayFabBackendAuth);
+	
+	    this.localStorage = localStorage;
+	    this.key = key;
+	    this.titleId = titleId;
+	  }
+	
+	  _createClass(PlayFabBackendAuth, [{
+	    key: 'login',
+	    value: function login() {
+	      var _this = this;
+	
+	      var customId = arguments.length > 0 && arguments[0] !== undefined ? arguments[0] : this.fetchAuth();
+	
+	      return new Promise(function (resolve, reject) {
+	        _playfabSdkBrowser.PlayFabClientSDK.LoginWithCustomID({
+	          TitleId: _this.titleId,
+	          CustomId: customId,
+	          CreateAccount: false,
+	          InfoRequestParameters: {
+	            GetUserData: true,
+	            GetUserAccountInfo: true
+	          }
+	        }, function (res, error) {
+	          if (error) {
+	            return reject(error);
+	          }
+	          _this.user = res;
+	          //console.log('playfab login success')
+	          return resolve(res);
+	        });
+	      });
+	    }
+	  }, {
+	    key: 'createAndRemember',
+	    value: function createAndRemember() {
+	      var _this2 = this;
+	
+	      return new Promise(function (resolve, reject) {
+	        _this2._createAndRemember(0, resolve, reject);
+	      });
+	    }
+	  }, {
+	    key: '_createAndRemember',
+	    value: function _createAndRemember() {
+	      var iter = arguments.length > 0 && arguments[0] !== undefined ? arguments[0] : 0;
+	
+	      var _this3 = this;
+	
+	      var resolve = arguments[1];
+	      var reject = arguments[2];
+	
+	      // no credentials. Create a new account.
+	      // We generate ids client-side. These act like userid+password; only need the
+	      // id to log in. But, since they're generated client-side, there's a remote
+	      // chance of duplicates. If we hit a duplicate, try again.
+	      // Hitting a dupe is actually pretty bad - someone evil could steal that
+	      // account. It's statistically unlikely to do that, though; ideally, we'll
+	      // never actually run this loop more than once.
+	      if (iter >= 10) {
+	        return reject('Failed to create new account');
+	      }
+	      var customId = _uuid2.default.v4();
+	      _playfabSdkBrowser.PlayFabClientSDK.LoginWithCustomID({
+	        TitleId: this.titleId,
+	        CustomId: customId,
+	        CreateAccount: true,
+	        InfoRequestParameters: {
+	          GetUserData: true,
+	          GetUserAccountInfo: true
+	        }
+	      }, function (res, error) {
+	        if (error) {
+	          return reject(error);
+	        }
+	        if (res.data.NewlyCreated) {
+	          // we guessed an unused id. Yay! This is the common case.
+	          console.debug('created account with new id. iter ' + iter);
+	          _this3.pushAuth(customId);
+	          _this3.user = res;
+	          return resolve(res);
+	        }
+	        // we guessed a used id, try again. This should be uncommon.
+	        console.warn('tried creating new account with occupied id. Trying again: ' + iter);
+	        return _this3._createAndRemember(iter + 1, resolve, reject);
+	      });
+	    }
+	  }, {
+	    key: 'fetchAuth',
+	    value: function fetchAuth() {
+	      var encoded = this.localStorage.getItem(this.key);
+	      return encoded ? JSON.parse(encoded).customId : null;
+	    }
+	  }, {
+	    key: 'pushAuth',
+	    value: function pushAuth(customId) {
+	      this.localStorage.setItem(this.key, JSON.stringify({ customId: customId }));
+	    }
+	  }, {
+	    key: 'clearAuth',
+	    value: function clearAuth() {
+	      this.localStorage.removeItem(this.key);
+	    }
+	  }, {
+	    key: 'logout',
+	    value: function logout() {
+	      // Remove the custom id cookie, so we won't be logged in as this user upon page reload.
+	      this.clearAuth();
+	      // Remove playfab's login data. There's no official method, but there's source code!
+	      // https://github.com/PlayFab/JavaScriptSDK/blob/master/PlayFabSDK/PlayFabClientApi.js
+	      _playfabSdkBrowser.PlayFab._internalSettings.sessionTicket = null;
+	      if (_playfabSdkBrowser.PlayFabClientSDK.IsClientLoggedIn()) {
+	        console.error("couldn't log out from playfab");
+	      }
+	    }
+	  }, {
+	    key: 'loginOrCreate',
+	    value: function loginOrCreate() {
+	      var customId = this.fetchAuth();
+	      if (customId) {
+	        return this.login(customId);
+	      } else {
+	        return this.createAndRemember();
+	      }
+	    }
+	  }]);
+	
+	  return PlayFabBackendAuth;
+	}();
+	
+	var PlayFabBackend = exports.PlayFabBackend = function () {
+	  function PlayFabBackend(config) {
+	    _classCallCheck(this, PlayFabBackend);
+	
+	    this.config = Object.assign({}, defaultConfig, config);
+	    // it's too bad playfab forces this to be global
+	    _playfabSdkBrowser.PlayFab.settings.titleId = this.config.titleId;
+	    this.auth = new PlayFabBackendAuth(this.config.localStorage, this.config.localStorageKey, this.config.titleId);
+	  }
+	
+	  _createClass(PlayFabBackend, [{
+	    key: '_parseFetchUserData',
+	    value: function _parseFetchUserData() {
+	      var _ref;
+	
+	      var userdata = arguments.length > 0 && arguments[0] !== undefined ? arguments[0] : {};
+	
+	      // TODO chunking
+	      var container = userdata[this.config.stateKey];
+	      if (!container) {
+	        return { empty: true };
+	      }
+	      return _ref = {}, _defineProperty(_ref, this.config.stateKey, JSON.parse(container.Value)), _defineProperty(_ref, 'lastUpdated', new Date(container.LastUpdated).getTime()), _ref;
+	    }
+	    // https://api.playfab.com/Documentation/Client/method/LoginWithCustomID
+	
+	  }, {
+	    key: 'start',
+	    value: function start() {
+	      var _this4 = this;
+	
+	      // Login sessions expire after 24 hours:
+	      // https://community.playfab.com/idea/224/205582298-Session-ticket-expiry-Timestamp-.html
+	      //
+	      // Re-login to refresh the session periodically. CustomId logins are
+	      // invisible to the user, so there's no real cost.
+	      var relog = function relog() {
+	        return _this4.auth.login();
+	      };
+	      this._loginRefresher = window.setInterval(relog, this.config.loginRefreshMillis);
+	      // login and fetch in one step
+	      return new Promise(function (resolve, reject) {
+	        _this4.auth.loginOrCreate().then(function (res) {
+	          // login returns fetch data plus user account data
+	          var ret = _this4._parseFetchUserData(res.data.InfoResultPayload.UserData);
+	          ret.user = res.data.InfoResultPayload.AccountInfo;
+	          resolve(ret);
+	        }, function (error) {
+	          return reject(error);
+	        });
+	      });
+	    }
+	  }, {
+	    key: 'logoutAndStop',
+	    value: function logoutAndStop() {
+	      this.auth.logout();
+	      // logout without stopping doesn't make sense - you can't do anything with playfab while logged out.
+	      this.stop();
+	    }
+	  }, {
+	    key: 'rememberLogin',
+	    value: function rememberLogin(customId) {
+	      this.auth.pushAuth(customId);
+	    }
+	  }, {
+	    key: 'stop',
+	    value: function stop() {
+	      window.clearInterval(this._loginRefresher);
+	    }
+	    // https://api.playfab.com/Documentation/Client/method/GetUserData
+	
+	  }, {
+	    key: 'fetch',
+	    value: function fetch() {
+	      var _this5 = this;
+	
+	      return new Promise(function (resolve, reject) {
+	        _playfabSdkBrowser.PlayFabClientSDK.GetUserData({}, function (res, error) {
+	          if (error) {
+	            reject(error);
+	          } else {
+	            resolve(_this5._parseFetchUserData(res.data.Data));
+	          }
+	        });
+	      });
+	    }
+	  }, {
+	    key: 'lastPush',
+	    value: function lastPush(state) {
+	      // Send the last push synchronously. Pushing during page unload is tricky -
+	      // async XHRs fail in unload handlers, so normally, save-on-close doesn't.
+	      // Synchronous requests block the UI for a moment, but usually succeed.
+	      // UI blocking is awful, but saving the game on close is just that important.
+	      // 
+	      // PlayFab's API is pretty uncooperative here. We can't officially configure
+	      // its calls to be synchronous, but we can monkeypatch XMLHTTPRequest.
+	      // We're manipulating the XMLHttpRequest.open in this file, ExecuteRequest():
+	      // https://github.com/PlayFab/JavaScriptSDK/blob/master/PlayFabSDK/PlayFabClientApi.js
+	      //
+	      // sendBeacon() would be better - no UI block. It's much harder to patch in to
+	      // PlayFab's API though, and browser support is less common. Maybe later, but 
+	      // this is a fine start.
+	      // https://developer.mozilla.org/en-US/docs/Web/API/Navigator/sendBeacon
+	      var fn = window.XMLHttpRequest.prototype.open;
+	      window.XMLHttpRequest.prototype.open = function (method, url, async) {
+	        console.log('hijacked xmlhttprequest.open, sync calls only');
+	        return fn.call(this, method, url, false);
+	      };
+	      // clean up after myself, both for success and error.
+	      // Maybe not necessary since the page is closing, but it's a good habit.
+	      var cleanup = function cleanup(res) {
+	        window.XMLHttpRequest.prototype.open = fn;
+	        console.log('un-hijacked xmlhttprequest.open, async allowed again');
+	        return res;
+	      };
+	      return this.push(state).then(cleanup, cleanup);
+	    }
+	    // https://api.playfab.com/Documentation/Client/method/UpdateUserData
+	
+	  }, {
+	    key: 'push',
+	    value: function push(state) {
+	      var _this6 = this;
+	
+	      // localstorage is synchronous and doesn't really need promises, but other backends need them
+	      return new Promise(function (resolve, reject) {
+	        _playfabSdkBrowser.PlayFabClientSDK.UpdateUserData({ Data: _defineProperty({}, _this6.config.stateKey, JSON.stringify(state)) }, function (res, error) {
+	          if (error) {
+	            reject(error);
+	          } else {
+	            resolve({ state: state, res: res });
+	          }
+	        });
+	      });
+	    }
+	    // https://api.playfab.com/Documentation/Client/method/UpdateUserData
+	
+	  }, {
+	    key: 'clear',
+	    value: function clear() {
+	      var _this7 = this;
+	
+	      return new Promise(function (resolve, reject) {
+	        _playfabSdkBrowser.PlayFabClientSDK.UpdateUserData({ KeysToRemove: [_this7.config.stateKey] }, function (res, error) {
+	          if (error) {
+	            reject(error);
+	          } else {
+	            resolve({ state: state, res: res });
+	          }
+	        });
+	      });
+	    }
+	  }]);
+
+	  return PlayFabBackend;
+	}();
+	/* WEBPACK VAR INJECTION */}.call(exports, (function() { return this; }())))
+
+/***/ },
+/* 136 */
+/***/ function(module, exports) {
+
+	var PlayFab = typeof PlayFab != 'undefined' ? PlayFab : {};
+	
+	if(!PlayFab.settings) {
+	    PlayFab.settings = {
+	        titleId: null, // You must set this value for PlayFabSdk to work properly (Found in the Game Manager for your title, at the PlayFab Website)
+	        developerSecretKey: null, // For security reasons you must never expose this value to the client or players - You must set this value for Server-APIs to work properly (Found in the Game Manager for your title, at the PlayFab Website)
+	        advertisingIdType: null,
+	        advertisingIdValue: null,
+	
+	        // disableAdvertising is provided for completeness, but changing it is not suggested
+	        // Disabling this may prevent your advertising-related PlayFab marketplace partners from working correctly
+	        disableAdvertising: false,
+	        AD_TYPE_IDFA: "Idfa",
+	        AD_TYPE_ANDROID_ID: "Android_Id"
+	    }
+	}
+	
+	if(!PlayFab._internalSettings) {
+	    PlayFab._internalSettings = {
+	        sessionTicket: null,
+	        sdkVersion: "0.31.161003",
+	        buildIdentifier: "jbuild_javascriptsdk_1",
+	        productionServerUrl: ".playfabapi.com",
+	        logicServerUrl: null,
+	
+	        GetServerUrl: function () {
+	            return "https://" + PlayFab.settings.titleId + PlayFab._internalSettings.productionServerUrl;
+	        },
+	
+	        GetLogicServerUrl: function () {
+	            return PlayFab._internalSettings.logicServerUrl;
+	        },
+	
+	        ExecuteRequest: function (completeUrl, data, authkey, authValue, callback) {
+	            if (callback != null && typeof (callback) != "function")
+	                throw "Callback must be null of a function";
+	
+	            if (data == null)
+	                data = {};
+	
+	            var startTime = new Date();
+	            var requestBody = JSON.stringify(data);
+	
+	            var xhr = new XMLHttpRequest();
+	            // window.console.log("URL: " + completeUrl);
+	            xhr.open("POST", completeUrl, true);
+	
+	            xhr.setRequestHeader('Content-Type', 'application/json');
+	
+	            if (authkey != null)
+	                xhr.setRequestHeader(authkey, authValue);
+	
+	            xhr.setRequestHeader('X-PlayFabSDK', "JavaScriptSDK-" + PlayFab._internalSettings.sdkVersion);
+	
+	            xhr.onloadend = function () {
+	                if (callback == null)
+	                    return;
+	
+	                var result;
+	                try {
+	                    // window.console.log("parsing json result: " + xhr.responseText);
+	                    result = JSON.parse(xhr.responseText);
+	                } catch (e) {
+	                    result = {
+	                        code: 503, // Service Unavailable
+	                        status: "Service Unavailable",
+	                        error: "Connection error",
+	                        errorCode: 2, // PlayFabErrorCode.ConnectionError
+	                        errorMessage: xhr.responseText
+	                    };
+	                }
+	
+	                result.CallBackTimeMS = new Date() - startTime;
+	
+	                if (result.code === 200)
+	                    callback(result, null);
+	                else
+	                    callback(null, result);
+	            }
+	
+	            xhr.onerror = function () {
+	                if (callback == null)
+	                    return;
+	
+	                var result;
+	                try {
+	                    result = JSON.parse(xhr.responseText);
+	                } catch (e) {
+	                    result = {
+	                        code: 503, // Service Unavailable
+	                        status: "Service Unavailable",
+	                        error: "Connection error",
+	                        errorCode: 2, // PlayFabErrorCode.ConnectionError
+	                        errorMessage: xhr.responseText
+	                    };
+	                }
+	
+	                result.CallBackTimeMS = new Date() - startTime;
+	                callback(null, result);
+	            }
+	
+	            xhr.send(requestBody);
+	        }
+	    }
+	}
+	
+	PlayFab.ClientApi = {
+	
+	    IsClientLoggedIn: function () {
+	        return PlayFab._internalSettings.sessionTicket != null && PlayFab._internalSettings.sessionTicket.length > 0;
+	    },
+	
+	    GetPhotonAuthenticationToken: function (request, callback) {
+	        if (PlayFab._internalSettings.sessionTicket == null) throw "Must be logged in to call this method";
+	
+	        PlayFab._internalSettings.ExecuteRequest(PlayFab._internalSettings.GetServerUrl() + "/Client/GetPhotonAuthenticationToken", request, "X-Authorization", PlayFab._internalSettings.sessionTicket, callback);
+	    },
+	
+	    LoginWithAndroidDeviceID: function (request, callback) {
+	        request.TitleId = PlayFab.settings.titleId != null ? PlayFab.settings.titleId : request.TitleId; if (request.TitleId == null) throw "Must be have PlayFab.settings.titleId set to call this method";
+	
+	        var overloadCallback = function (result, error) {
+	            if (result != null && result.data.SessionTicket != null) {
+	                PlayFab._internalSettings.sessionTicket = result.data.SessionTicket;
+	                PlayFab.ClientApi._MultiStepClientLogin(result.data.SettingsForUser.NeedsAttribution);
+	            }
+	            if (callback != null && typeof (callback) == "function")
+	                callback(result, error);
+	        };
+	        PlayFab._internalSettings.ExecuteRequest(PlayFab._internalSettings.GetServerUrl() + "/Client/LoginWithAndroidDeviceID", request, null, null, overloadCallback);
+	    },
+	
+	    LoginWithCustomID: function (request, callback) {
+	        request.TitleId = PlayFab.settings.titleId != null ? PlayFab.settings.titleId : request.TitleId; if (request.TitleId == null) throw "Must be have PlayFab.settings.titleId set to call this method";
+	
+	        var overloadCallback = function (result, error) {
+	            if (result != null && result.data.SessionTicket != null) {
+	                PlayFab._internalSettings.sessionTicket = result.data.SessionTicket;
+	                PlayFab.ClientApi._MultiStepClientLogin(result.data.SettingsForUser.NeedsAttribution);
+	            }
+	            if (callback != null && typeof (callback) == "function")
+	                callback(result, error);
+	        };
+	        PlayFab._internalSettings.ExecuteRequest(PlayFab._internalSettings.GetServerUrl() + "/Client/LoginWithCustomID", request, null, null, overloadCallback);
+	    },
+	
+	    LoginWithEmailAddress: function (request, callback) {
+	        request.TitleId = PlayFab.settings.titleId != null ? PlayFab.settings.titleId : request.TitleId; if (request.TitleId == null) throw "Must be have PlayFab.settings.titleId set to call this method";
+	
+	        var overloadCallback = function (result, error) {
+	            if (result != null && result.data.SessionTicket != null) {
+	                PlayFab._internalSettings.sessionTicket = result.data.SessionTicket;
+	                PlayFab.ClientApi._MultiStepClientLogin(result.data.SettingsForUser.NeedsAttribution);
+	            }
+	            if (callback != null && typeof (callback) == "function")
+	                callback(result, error);
+	        };
+	        PlayFab._internalSettings.ExecuteRequest(PlayFab._internalSettings.GetServerUrl() + "/Client/LoginWithEmailAddress", request, null, null, overloadCallback);
+	    },
+	
+	    LoginWithFacebook: function (request, callback) {
+	        request.TitleId = PlayFab.settings.titleId != null ? PlayFab.settings.titleId : request.TitleId; if (request.TitleId == null) throw "Must be have PlayFab.settings.titleId set to call this method";
+	
+	        var overloadCallback = function (result, error) {
+	            if (result != null && result.data.SessionTicket != null) {
+	                PlayFab._internalSettings.sessionTicket = result.data.SessionTicket;
+	                PlayFab.ClientApi._MultiStepClientLogin(result.data.SettingsForUser.NeedsAttribution);
+	            }
+	            if (callback != null && typeof (callback) == "function")
+	                callback(result, error);
+	        };
+	        PlayFab._internalSettings.ExecuteRequest(PlayFab._internalSettings.GetServerUrl() + "/Client/LoginWithFacebook", request, null, null, overloadCallback);
+	    },
+	
+	    LoginWithGameCenter: function (request, callback) {
+	        request.TitleId = PlayFab.settings.titleId != null ? PlayFab.settings.titleId : request.TitleId; if (request.TitleId == null) throw "Must be have PlayFab.settings.titleId set to call this method";
+	
+	        var overloadCallback = function (result, error) {
+	            if (result != null && result.data.SessionTicket != null) {
+	                PlayFab._internalSettings.sessionTicket = result.data.SessionTicket;
+	                PlayFab.ClientApi._MultiStepClientLogin(result.data.SettingsForUser.NeedsAttribution);
+	            }
+	            if (callback != null && typeof (callback) == "function")
+	                callback(result, error);
+	        };
+	        PlayFab._internalSettings.ExecuteRequest(PlayFab._internalSettings.GetServerUrl() + "/Client/LoginWithGameCenter", request, null, null, overloadCallback);
+	    },
+	
+	    LoginWithGoogleAccount: function (request, callback) {
+	        request.TitleId = PlayFab.settings.titleId != null ? PlayFab.settings.titleId : request.TitleId; if (request.TitleId == null) throw "Must be have PlayFab.settings.titleId set to call this method";
+	
+	        var overloadCallback = function (result, error) {
+	            if (result != null && result.data.SessionTicket != null) {
+	                PlayFab._internalSettings.sessionTicket = result.data.SessionTicket;
+	                PlayFab.ClientApi._MultiStepClientLogin(result.data.SettingsForUser.NeedsAttribution);
+	            }
+	            if (callback != null && typeof (callback) == "function")
+	                callback(result, error);
+	        };
+	        PlayFab._internalSettings.ExecuteRequest(PlayFab._internalSettings.GetServerUrl() + "/Client/LoginWithGoogleAccount", request, null, null, overloadCallback);
+	    },
+	
+	    LoginWithIOSDeviceID: function (request, callback) {
+	        request.TitleId = PlayFab.settings.titleId != null ? PlayFab.settings.titleId : request.TitleId; if (request.TitleId == null) throw "Must be have PlayFab.settings.titleId set to call this method";
+	
+	        var overloadCallback = function (result, error) {
+	            if (result != null && result.data.SessionTicket != null) {
+	                PlayFab._internalSettings.sessionTicket = result.data.SessionTicket;
+	                PlayFab.ClientApi._MultiStepClientLogin(result.data.SettingsForUser.NeedsAttribution);
+	            }
+	            if (callback != null && typeof (callback) == "function")
+	                callback(result, error);
+	        };
+	        PlayFab._internalSettings.ExecuteRequest(PlayFab._internalSettings.GetServerUrl() + "/Client/LoginWithIOSDeviceID", request, null, null, overloadCallback);
+	    },
+	
+	    LoginWithKongregate: function (request, callback) {
+	        request.TitleId = PlayFab.settings.titleId != null ? PlayFab.settings.titleId : request.TitleId; if (request.TitleId == null) throw "Must be have PlayFab.settings.titleId set to call this method";
+	
+	        var overloadCallback = function (result, error) {
+	            if (result != null && result.data.SessionTicket != null) {
+	                PlayFab._internalSettings.sessionTicket = result.data.SessionTicket;
+	                PlayFab.ClientApi._MultiStepClientLogin(result.data.SettingsForUser.NeedsAttribution);
+	            }
+	            if (callback != null && typeof (callback) == "function")
+	                callback(result, error);
+	        };
+	        PlayFab._internalSettings.ExecuteRequest(PlayFab._internalSettings.GetServerUrl() + "/Client/LoginWithKongregate", request, null, null, overloadCallback);
+	    },
+	
+	    LoginWithPlayFab: function (request, callback) {
+	        request.TitleId = PlayFab.settings.titleId != null ? PlayFab.settings.titleId : request.TitleId; if (request.TitleId == null) throw "Must be have PlayFab.settings.titleId set to call this method";
+	
+	        var overloadCallback = function (result, error) {
+	            if (result != null && result.data.SessionTicket != null) {
+	                PlayFab._internalSettings.sessionTicket = result.data.SessionTicket;
+	                PlayFab.ClientApi._MultiStepClientLogin(result.data.SettingsForUser.NeedsAttribution);
+	            }
+	            if (callback != null && typeof (callback) == "function")
+	                callback(result, error);
+	        };
+	        PlayFab._internalSettings.ExecuteRequest(PlayFab._internalSettings.GetServerUrl() + "/Client/LoginWithPlayFab", request, null, null, overloadCallback);
+	    },
+	
+	    LoginWithSteam: function (request, callback) {
+	        request.TitleId = PlayFab.settings.titleId != null ? PlayFab.settings.titleId : request.TitleId; if (request.TitleId == null) throw "Must be have PlayFab.settings.titleId set to call this method";
+	
+	        var overloadCallback = function (result, error) {
+	            if (result != null && result.data.SessionTicket != null) {
+	                PlayFab._internalSettings.sessionTicket = result.data.SessionTicket;
+	                PlayFab.ClientApi._MultiStepClientLogin(result.data.SettingsForUser.NeedsAttribution);
+	            }
+	            if (callback != null && typeof (callback) == "function")
+	                callback(result, error);
+	        };
+	        PlayFab._internalSettings.ExecuteRequest(PlayFab._internalSettings.GetServerUrl() + "/Client/LoginWithSteam", request, null, null, overloadCallback);
+	    },
+	
+	    LoginWithTwitch: function (request, callback) {
+	        request.TitleId = PlayFab.settings.titleId != null ? PlayFab.settings.titleId : request.TitleId; if (request.TitleId == null) throw "Must be have PlayFab.settings.titleId set to call this method";
+	
+	        var overloadCallback = function (result, error) {
+	            if (result != null && result.data.SessionTicket != null) {
+	                PlayFab._internalSettings.sessionTicket = result.data.SessionTicket;
+	                PlayFab.ClientApi._MultiStepClientLogin(result.data.SettingsForUser.NeedsAttribution);
+	            }
+	            if (callback != null && typeof (callback) == "function")
+	                callback(result, error);
+	        };
+	        PlayFab._internalSettings.ExecuteRequest(PlayFab._internalSettings.GetServerUrl() + "/Client/LoginWithTwitch", request, null, null, overloadCallback);
+	    },
+	
+	    RegisterPlayFabUser: function (request, callback) {
+	        request.TitleId = PlayFab.settings.titleId != null ? PlayFab.settings.titleId : request.TitleId; if (request.TitleId == null) throw "Must be have PlayFab.settings.titleId set to call this method";
+	
+	        var overloadCallback = function (result, error) {
+	            if (result != null && result.data.SessionTicket != null) {
+	                PlayFab._internalSettings.sessionTicket = result.data.SessionTicket;
+	                PlayFab.ClientApi._MultiStepClientLogin(result.data.SettingsForUser.NeedsAttribution);
+	            }
+	            if (callback != null && typeof (callback) == "function")
+	                callback(result, error);
+	        };
+	        PlayFab._internalSettings.ExecuteRequest(PlayFab._internalSettings.GetServerUrl() + "/Client/RegisterPlayFabUser", request, null, null, overloadCallback);
+	    },
+	
+	    AddGenericID: function (request, callback) {
+	        if (PlayFab._internalSettings.sessionTicket == null) throw "Must be logged in to call this method";
+	
+	        PlayFab._internalSettings.ExecuteRequest(PlayFab._internalSettings.GetServerUrl() + "/Client/AddGenericID", request, "X-Authorization", PlayFab._internalSettings.sessionTicket, callback);
+	    },
+	
+	    AddUsernamePassword: function (request, callback) {
+	        if (PlayFab._internalSettings.sessionTicket == null) throw "Must be logged in to call this method";
+	
+	        PlayFab._internalSettings.ExecuteRequest(PlayFab._internalSettings.GetServerUrl() + "/Client/AddUsernamePassword", request, "X-Authorization", PlayFab._internalSettings.sessionTicket, callback);
+	    },
+	
+	    GetAccountInfo: function (request, callback) {
+	        if (PlayFab._internalSettings.sessionTicket == null) throw "Must be logged in to call this method";
+	
+	        PlayFab._internalSettings.ExecuteRequest(PlayFab._internalSettings.GetServerUrl() + "/Client/GetAccountInfo", request, "X-Authorization", PlayFab._internalSettings.sessionTicket, callback);
+	    },
+	
+	    GetPlayerCombinedInfo: function (request, callback) {
+	        if (PlayFab._internalSettings.sessionTicket == null) throw "Must be logged in to call this method";
+	
+	        PlayFab._internalSettings.ExecuteRequest(PlayFab._internalSettings.GetServerUrl() + "/Client/GetPlayerCombinedInfo", request, "X-Authorization", PlayFab._internalSettings.sessionTicket, callback);
+	    },
+	
+	    GetPlayFabIDsFromFacebookIDs: function (request, callback) {
+	        if (PlayFab._internalSettings.sessionTicket == null) throw "Must be logged in to call this method";
+	
+	        PlayFab._internalSettings.ExecuteRequest(PlayFab._internalSettings.GetServerUrl() + "/Client/GetPlayFabIDsFromFacebookIDs", request, "X-Authorization", PlayFab._internalSettings.sessionTicket, callback);
+	    },
+	
+	    GetPlayFabIDsFromGameCenterIDs: function (request, callback) {
+	        if (PlayFab._internalSettings.sessionTicket == null) throw "Must be logged in to call this method";
+	
+	        PlayFab._internalSettings.ExecuteRequest(PlayFab._internalSettings.GetServerUrl() + "/Client/GetPlayFabIDsFromGameCenterIDs", request, "X-Authorization", PlayFab._internalSettings.sessionTicket, callback);
+	    },
+	
+	    GetPlayFabIDsFromGenericIDs: function (request, callback) {
+	        if (PlayFab._internalSettings.sessionTicket == null) throw "Must be logged in to call this method";
+	
+	        PlayFab._internalSettings.ExecuteRequest(PlayFab._internalSettings.GetServerUrl() + "/Client/GetPlayFabIDsFromGenericIDs", request, "X-Authorization", PlayFab._internalSettings.sessionTicket, callback);
+	    },
+	
+	    GetPlayFabIDsFromGoogleIDs: function (request, callback) {
+	        if (PlayFab._internalSettings.sessionTicket == null) throw "Must be logged in to call this method";
+	
+	        PlayFab._internalSettings.ExecuteRequest(PlayFab._internalSettings.GetServerUrl() + "/Client/GetPlayFabIDsFromGoogleIDs", request, "X-Authorization", PlayFab._internalSettings.sessionTicket, callback);
+	    },
+	
+	    GetPlayFabIDsFromKongregateIDs: function (request, callback) {
+	        if (PlayFab._internalSettings.sessionTicket == null) throw "Must be logged in to call this method";
+	
+	        PlayFab._internalSettings.ExecuteRequest(PlayFab._internalSettings.GetServerUrl() + "/Client/GetPlayFabIDsFromKongregateIDs", request, "X-Authorization", PlayFab._internalSettings.sessionTicket, callback);
+	    },
+	
+	    GetPlayFabIDsFromSteamIDs: function (request, callback) {
+	        if (PlayFab._internalSettings.sessionTicket == null) throw "Must be logged in to call this method";
+	
+	        PlayFab._internalSettings.ExecuteRequest(PlayFab._internalSettings.GetServerUrl() + "/Client/GetPlayFabIDsFromSteamIDs", request, "X-Authorization", PlayFab._internalSettings.sessionTicket, callback);
+	    },
+	
+	    GetPlayFabIDsFromTwitchIDs: function (request, callback) {
+	        if (PlayFab._internalSettings.sessionTicket == null) throw "Must be logged in to call this method";
+	
+	        PlayFab._internalSettings.ExecuteRequest(PlayFab._internalSettings.GetServerUrl() + "/Client/GetPlayFabIDsFromTwitchIDs", request, "X-Authorization", PlayFab._internalSettings.sessionTicket, callback);
+	    },
+	
+	    /**
+	     * @deprecated Please use GetPlayerCombinedInfo instead. 
+	     */
+	    GetUserCombinedInfo: function (request, callback) {
+	        if (PlayFab._internalSettings.sessionTicket == null) throw "Must be logged in to call this method";
+	
+	        PlayFab._internalSettings.ExecuteRequest(PlayFab._internalSettings.GetServerUrl() + "/Client/GetUserCombinedInfo", request, "X-Authorization", PlayFab._internalSettings.sessionTicket, callback);
+	    },
+	
+	    LinkAndroidDeviceID: function (request, callback) {
+	        if (PlayFab._internalSettings.sessionTicket == null) throw "Must be logged in to call this method";
+	
+	        PlayFab._internalSettings.ExecuteRequest(PlayFab._internalSettings.GetServerUrl() + "/Client/LinkAndroidDeviceID", request, "X-Authorization", PlayFab._internalSettings.sessionTicket, callback);
+	    },
+	
+	    LinkCustomID: function (request, callback) {
+	        if (PlayFab._internalSettings.sessionTicket == null) throw "Must be logged in to call this method";
+	
+	        PlayFab._internalSettings.ExecuteRequest(PlayFab._internalSettings.GetServerUrl() + "/Client/LinkCustomID", request, "X-Authorization", PlayFab._internalSettings.sessionTicket, callback);
+	    },
+	
+	    LinkFacebookAccount: function (request, callback) {
+	        if (PlayFab._internalSettings.sessionTicket == null) throw "Must be logged in to call this method";
+	
+	        PlayFab._internalSettings.ExecuteRequest(PlayFab._internalSettings.GetServerUrl() + "/Client/LinkFacebookAccount", request, "X-Authorization", PlayFab._internalSettings.sessionTicket, callback);
+	    },
+	
+	    LinkGameCenterAccount: function (request, callback) {
+	        if (PlayFab._internalSettings.sessionTicket == null) throw "Must be logged in to call this method";
+	
+	        PlayFab._internalSettings.ExecuteRequest(PlayFab._internalSettings.GetServerUrl() + "/Client/LinkGameCenterAccount", request, "X-Authorization", PlayFab._internalSettings.sessionTicket, callback);
+	    },
+	
+	    LinkGoogleAccount: function (request, callback) {
+	        if (PlayFab._internalSettings.sessionTicket == null) throw "Must be logged in to call this method";
+	
+	        PlayFab._internalSettings.ExecuteRequest(PlayFab._internalSettings.GetServerUrl() + "/Client/LinkGoogleAccount", request, "X-Authorization", PlayFab._internalSettings.sessionTicket, callback);
+	    },
+	
+	    LinkIOSDeviceID: function (request, callback) {
+	        if (PlayFab._internalSettings.sessionTicket == null) throw "Must be logged in to call this method";
+	
+	        PlayFab._internalSettings.ExecuteRequest(PlayFab._internalSettings.GetServerUrl() + "/Client/LinkIOSDeviceID", request, "X-Authorization", PlayFab._internalSettings.sessionTicket, callback);
+	    },
+	
+	    LinkKongregate: function (request, callback) {
+	        if (PlayFab._internalSettings.sessionTicket == null) throw "Must be logged in to call this method";
+	
+	        PlayFab._internalSettings.ExecuteRequest(PlayFab._internalSettings.GetServerUrl() + "/Client/LinkKongregate", request, "X-Authorization", PlayFab._internalSettings.sessionTicket, callback);
+	    },
+	
+	    LinkSteamAccount: function (request, callback) {
+	        if (PlayFab._internalSettings.sessionTicket == null) throw "Must be logged in to call this method";
+	
+	        PlayFab._internalSettings.ExecuteRequest(PlayFab._internalSettings.GetServerUrl() + "/Client/LinkSteamAccount", request, "X-Authorization", PlayFab._internalSettings.sessionTicket, callback);
+	    },
+	
+	    LinkTwitch: function (request, callback) {
+	        if (PlayFab._internalSettings.sessionTicket == null) throw "Must be logged in to call this method";
+	
+	        PlayFab._internalSettings.ExecuteRequest(PlayFab._internalSettings.GetServerUrl() + "/Client/LinkTwitch", request, "X-Authorization", PlayFab._internalSettings.sessionTicket, callback);
+	    },
+	
+	    RemoveGenericID: function (request, callback) {
+	        if (PlayFab._internalSettings.sessionTicket == null) throw "Must be logged in to call this method";
+	
+	        PlayFab._internalSettings.ExecuteRequest(PlayFab._internalSettings.GetServerUrl() + "/Client/RemoveGenericID", request, "X-Authorization", PlayFab._internalSettings.sessionTicket, callback);
+	    },
+	
+	    ReportPlayer: function (request, callback) {
+	        if (PlayFab._internalSettings.sessionTicket == null) throw "Must be logged in to call this method";
+	
+	        PlayFab._internalSettings.ExecuteRequest(PlayFab._internalSettings.GetServerUrl() + "/Client/ReportPlayer", request, "X-Authorization", PlayFab._internalSettings.sessionTicket, callback);
+	    },
+	
+	    SendAccountRecoveryEmail: function (request, callback) {
+	
+	        PlayFab._internalSettings.ExecuteRequest(PlayFab._internalSettings.GetServerUrl() + "/Client/SendAccountRecoveryEmail", request, null, null, callback);
+	    },
+	
+	    UnlinkAndroidDeviceID: function (request, callback) {
+	        if (PlayFab._internalSettings.sessionTicket == null) throw "Must be logged in to call this method";
+	
+	        PlayFab._internalSettings.ExecuteRequest(PlayFab._internalSettings.GetServerUrl() + "/Client/UnlinkAndroidDeviceID", request, "X-Authorization", PlayFab._internalSettings.sessionTicket, callback);
+	    },
+	
+	    UnlinkCustomID: function (request, callback) {
+	        if (PlayFab._internalSettings.sessionTicket == null) throw "Must be logged in to call this method";
+	
+	        PlayFab._internalSettings.ExecuteRequest(PlayFab._internalSettings.GetServerUrl() + "/Client/UnlinkCustomID", request, "X-Authorization", PlayFab._internalSettings.sessionTicket, callback);
+	    },
+	
+	    UnlinkFacebookAccount: function (request, callback) {
+	        if (PlayFab._internalSettings.sessionTicket == null) throw "Must be logged in to call this method";
+	
+	        PlayFab._internalSettings.ExecuteRequest(PlayFab._internalSettings.GetServerUrl() + "/Client/UnlinkFacebookAccount", request, "X-Authorization", PlayFab._internalSettings.sessionTicket, callback);
+	    },
+	
+	    UnlinkGameCenterAccount: function (request, callback) {
+	        if (PlayFab._internalSettings.sessionTicket == null) throw "Must be logged in to call this method";
+	
+	        PlayFab._internalSettings.ExecuteRequest(PlayFab._internalSettings.GetServerUrl() + "/Client/UnlinkGameCenterAccount", request, "X-Authorization", PlayFab._internalSettings.sessionTicket, callback);
+	    },
+	
+	    UnlinkGoogleAccount: function (request, callback) {
+	        if (PlayFab._internalSettings.sessionTicket == null) throw "Must be logged in to call this method";
+	
+	        PlayFab._internalSettings.ExecuteRequest(PlayFab._internalSettings.GetServerUrl() + "/Client/UnlinkGoogleAccount", request, "X-Authorization", PlayFab._internalSettings.sessionTicket, callback);
+	    },
+	
+	    UnlinkIOSDeviceID: function (request, callback) {
+	        if (PlayFab._internalSettings.sessionTicket == null) throw "Must be logged in to call this method";
+	
+	        PlayFab._internalSettings.ExecuteRequest(PlayFab._internalSettings.GetServerUrl() + "/Client/UnlinkIOSDeviceID", request, "X-Authorization", PlayFab._internalSettings.sessionTicket, callback);
+	    },
+	
+	    UnlinkKongregate: function (request, callback) {
+	        if (PlayFab._internalSettings.sessionTicket == null) throw "Must be logged in to call this method";
+	
+	        PlayFab._internalSettings.ExecuteRequest(PlayFab._internalSettings.GetServerUrl() + "/Client/UnlinkKongregate", request, "X-Authorization", PlayFab._internalSettings.sessionTicket, callback);
+	    },
+	
+	    UnlinkSteamAccount: function (request, callback) {
+	        if (PlayFab._internalSettings.sessionTicket == null) throw "Must be logged in to call this method";
+	
+	        PlayFab._internalSettings.ExecuteRequest(PlayFab._internalSettings.GetServerUrl() + "/Client/UnlinkSteamAccount", request, "X-Authorization", PlayFab._internalSettings.sessionTicket, callback);
+	    },
+	
+	    UnlinkTwitch: function (request, callback) {
+	        if (PlayFab._internalSettings.sessionTicket == null) throw "Must be logged in to call this method";
+	
+	        PlayFab._internalSettings.ExecuteRequest(PlayFab._internalSettings.GetServerUrl() + "/Client/UnlinkTwitch", request, "X-Authorization", PlayFab._internalSettings.sessionTicket, callback);
+	    },
+	
+	    UpdateUserTitleDisplayName: function (request, callback) {
+	        if (PlayFab._internalSettings.sessionTicket == null) throw "Must be logged in to call this method";
+	
+	        PlayFab._internalSettings.ExecuteRequest(PlayFab._internalSettings.GetServerUrl() + "/Client/UpdateUserTitleDisplayName", request, "X-Authorization", PlayFab._internalSettings.sessionTicket, callback);
+	    },
+	
+	    GetFriendLeaderboard: function (request, callback) {
+	        if (PlayFab._internalSettings.sessionTicket == null) throw "Must be logged in to call this method";
+	
+	        PlayFab._internalSettings.ExecuteRequest(PlayFab._internalSettings.GetServerUrl() + "/Client/GetFriendLeaderboard", request, "X-Authorization", PlayFab._internalSettings.sessionTicket, callback);
+	    },
+	
+	    /**
+	     * @deprecated Please use GetFriendLeaderboardAroundPlayer instead. 
+	     */
+	    GetFriendLeaderboardAroundCurrentUser: function (request, callback) {
+	        if (PlayFab._internalSettings.sessionTicket == null) throw "Must be logged in to call this method";
+	
+	        PlayFab._internalSettings.ExecuteRequest(PlayFab._internalSettings.GetServerUrl() + "/Client/GetFriendLeaderboardAroundCurrentUser", request, "X-Authorization", PlayFab._internalSettings.sessionTicket, callback);
+	    },
+	
+	    GetFriendLeaderboardAroundPlayer: function (request, callback) {
+	        if (PlayFab._internalSettings.sessionTicket == null) throw "Must be logged in to call this method";
+	
+	        PlayFab._internalSettings.ExecuteRequest(PlayFab._internalSettings.GetServerUrl() + "/Client/GetFriendLeaderboardAroundPlayer", request, "X-Authorization", PlayFab._internalSettings.sessionTicket, callback);
+	    },
+	
+	    GetLeaderboard: function (request, callback) {
+	        if (PlayFab._internalSettings.sessionTicket == null) throw "Must be logged in to call this method";
+	
+	        PlayFab._internalSettings.ExecuteRequest(PlayFab._internalSettings.GetServerUrl() + "/Client/GetLeaderboard", request, "X-Authorization", PlayFab._internalSettings.sessionTicket, callback);
+	    },
+	
+	    /**
+	     * @deprecated Please use GetLeaderboardAroundPlayer instead. 
+	     */
+	    GetLeaderboardAroundCurrentUser: function (request, callback) {
+	        if (PlayFab._internalSettings.sessionTicket == null) throw "Must be logged in to call this method";
+	
+	        PlayFab._internalSettings.ExecuteRequest(PlayFab._internalSettings.GetServerUrl() + "/Client/GetLeaderboardAroundCurrentUser", request, "X-Authorization", PlayFab._internalSettings.sessionTicket, callback);
+	    },
+	
+	    GetLeaderboardAroundPlayer: function (request, callback) {
+	        if (PlayFab._internalSettings.sessionTicket == null) throw "Must be logged in to call this method";
+	
+	        PlayFab._internalSettings.ExecuteRequest(PlayFab._internalSettings.GetServerUrl() + "/Client/GetLeaderboardAroundPlayer", request, "X-Authorization", PlayFab._internalSettings.sessionTicket, callback);
+	    },
+	
+	    GetPlayerStatistics: function (request, callback) {
+	        if (PlayFab._internalSettings.sessionTicket == null) throw "Must be logged in to call this method";
+	
+	        PlayFab._internalSettings.ExecuteRequest(PlayFab._internalSettings.GetServerUrl() + "/Client/GetPlayerStatistics", request, "X-Authorization", PlayFab._internalSettings.sessionTicket, callback);
+	    },
+	
+	    GetPlayerStatisticVersions: function (request, callback) {
+	        if (PlayFab._internalSettings.sessionTicket == null) throw "Must be logged in to call this method";
+	
+	        PlayFab._internalSettings.ExecuteRequest(PlayFab._internalSettings.GetServerUrl() + "/Client/GetPlayerStatisticVersions", request, "X-Authorization", PlayFab._internalSettings.sessionTicket, callback);
+	    },
+	
+	    GetUserData: function (request, callback) {
+	        if (PlayFab._internalSettings.sessionTicket == null) throw "Must be logged in to call this method";
+	
+	        PlayFab._internalSettings.ExecuteRequest(PlayFab._internalSettings.GetServerUrl() + "/Client/GetUserData", request, "X-Authorization", PlayFab._internalSettings.sessionTicket, callback);
+	    },
+	
+	    GetUserPublisherData: function (request, callback) {
+	        if (PlayFab._internalSettings.sessionTicket == null) throw "Must be logged in to call this method";
+	
+	        PlayFab._internalSettings.ExecuteRequest(PlayFab._internalSettings.GetServerUrl() + "/Client/GetUserPublisherData", request, "X-Authorization", PlayFab._internalSettings.sessionTicket, callback);
+	    },
+	
+	    GetUserPublisherReadOnlyData: function (request, callback) {
+	        if (PlayFab._internalSettings.sessionTicket == null) throw "Must be logged in to call this method";
+	
+	        PlayFab._internalSettings.ExecuteRequest(PlayFab._internalSettings.GetServerUrl() + "/Client/GetUserPublisherReadOnlyData", request, "X-Authorization", PlayFab._internalSettings.sessionTicket, callback);
+	    },
+	
+	    GetUserReadOnlyData: function (request, callback) {
+	        if (PlayFab._internalSettings.sessionTicket == null) throw "Must be logged in to call this method";
+	
+	        PlayFab._internalSettings.ExecuteRequest(PlayFab._internalSettings.GetServerUrl() + "/Client/GetUserReadOnlyData", request, "X-Authorization", PlayFab._internalSettings.sessionTicket, callback);
+	    },
+	
+	    /**
+	     * @deprecated Please use GetPlayerStatistics instead. 
+	     */
+	    GetUserStatistics: function (request, callback) {
+	        if (PlayFab._internalSettings.sessionTicket == null) throw "Must be logged in to call this method";
+	
+	        PlayFab._internalSettings.ExecuteRequest(PlayFab._internalSettings.GetServerUrl() + "/Client/GetUserStatistics", request, "X-Authorization", PlayFab._internalSettings.sessionTicket, callback);
+	    },
+	
+	    UpdatePlayerStatistics: function (request, callback) {
+	        if (PlayFab._internalSettings.sessionTicket == null) throw "Must be logged in to call this method";
+	
+	        PlayFab._internalSettings.ExecuteRequest(PlayFab._internalSettings.GetServerUrl() + "/Client/UpdatePlayerStatistics", request, "X-Authorization", PlayFab._internalSettings.sessionTicket, callback);
+	    },
+	
+	    UpdateUserData: function (request, callback) {
+	        if (PlayFab._internalSettings.sessionTicket == null) throw "Must be logged in to call this method";
+	
+	        PlayFab._internalSettings.ExecuteRequest(PlayFab._internalSettings.GetServerUrl() + "/Client/UpdateUserData", request, "X-Authorization", PlayFab._internalSettings.sessionTicket, callback);
+	    },
+	
+	    UpdateUserPublisherData: function (request, callback) {
+	        if (PlayFab._internalSettings.sessionTicket == null) throw "Must be logged in to call this method";
+	
+	        PlayFab._internalSettings.ExecuteRequest(PlayFab._internalSettings.GetServerUrl() + "/Client/UpdateUserPublisherData", request, "X-Authorization", PlayFab._internalSettings.sessionTicket, callback);
+	    },
+	
+	    /**
+	     * @deprecated Please use UpdatePlayerStatistics instead. 
+	     */
+	    UpdateUserStatistics: function (request, callback) {
+	        if (PlayFab._internalSettings.sessionTicket == null) throw "Must be logged in to call this method";
+	
+	        PlayFab._internalSettings.ExecuteRequest(PlayFab._internalSettings.GetServerUrl() + "/Client/UpdateUserStatistics", request, "X-Authorization", PlayFab._internalSettings.sessionTicket, callback);
+	    },
+	
+	    GetCatalogItems: function (request, callback) {
+	        if (PlayFab._internalSettings.sessionTicket == null) throw "Must be logged in to call this method";
+	
+	        PlayFab._internalSettings.ExecuteRequest(PlayFab._internalSettings.GetServerUrl() + "/Client/GetCatalogItems", request, "X-Authorization", PlayFab._internalSettings.sessionTicket, callback);
+	    },
+	
+	    GetPublisherData: function (request, callback) {
+	        if (PlayFab._internalSettings.sessionTicket == null) throw "Must be logged in to call this method";
+	
+	        PlayFab._internalSettings.ExecuteRequest(PlayFab._internalSettings.GetServerUrl() + "/Client/GetPublisherData", request, "X-Authorization", PlayFab._internalSettings.sessionTicket, callback);
+	    },
+	
+	    GetStoreItems: function (request, callback) {
+	        if (PlayFab._internalSettings.sessionTicket == null) throw "Must be logged in to call this method";
+	
+	        PlayFab._internalSettings.ExecuteRequest(PlayFab._internalSettings.GetServerUrl() + "/Client/GetStoreItems", request, "X-Authorization", PlayFab._internalSettings.sessionTicket, callback);
+	    },
+	
+	    GetTime: function (request, callback) {
+	        if (PlayFab._internalSettings.sessionTicket == null) throw "Must be logged in to call this method";
+	
+	        PlayFab._internalSettings.ExecuteRequest(PlayFab._internalSettings.GetServerUrl() + "/Client/GetTime", request, "X-Authorization", PlayFab._internalSettings.sessionTicket, callback);
+	    },
+	
+	    GetTitleData: function (request, callback) {
+	        if (PlayFab._internalSettings.sessionTicket == null) throw "Must be logged in to call this method";
+	
+	        PlayFab._internalSettings.ExecuteRequest(PlayFab._internalSettings.GetServerUrl() + "/Client/GetTitleData", request, "X-Authorization", PlayFab._internalSettings.sessionTicket, callback);
+	    },
+	
+	    GetTitleNews: function (request, callback) {
+	        if (PlayFab._internalSettings.sessionTicket == null) throw "Must be logged in to call this method";
+	
+	        PlayFab._internalSettings.ExecuteRequest(PlayFab._internalSettings.GetServerUrl() + "/Client/GetTitleNews", request, "X-Authorization", PlayFab._internalSettings.sessionTicket, callback);
+	    },
+	
+	    AddUserVirtualCurrency: function (request, callback) {
+	        if (PlayFab._internalSettings.sessionTicket == null) throw "Must be logged in to call this method";
+	
+	        PlayFab._internalSettings.ExecuteRequest(PlayFab._internalSettings.GetServerUrl() + "/Client/AddUserVirtualCurrency", request, "X-Authorization", PlayFab._internalSettings.sessionTicket, callback);
+	    },
+	
+	    ConfirmPurchase: function (request, callback) {
+	        if (PlayFab._internalSettings.sessionTicket == null) throw "Must be logged in to call this method";
+	
+	        PlayFab._internalSettings.ExecuteRequest(PlayFab._internalSettings.GetServerUrl() + "/Client/ConfirmPurchase", request, "X-Authorization", PlayFab._internalSettings.sessionTicket, callback);
+	    },
+	
+	    ConsumeItem: function (request, callback) {
+	        if (PlayFab._internalSettings.sessionTicket == null) throw "Must be logged in to call this method";
+	
+	        PlayFab._internalSettings.ExecuteRequest(PlayFab._internalSettings.GetServerUrl() + "/Client/ConsumeItem", request, "X-Authorization", PlayFab._internalSettings.sessionTicket, callback);
+	    },
+	
+	    GetCharacterInventory: function (request, callback) {
+	        if (PlayFab._internalSettings.sessionTicket == null) throw "Must be logged in to call this method";
+	
+	        PlayFab._internalSettings.ExecuteRequest(PlayFab._internalSettings.GetServerUrl() + "/Client/GetCharacterInventory", request, "X-Authorization", PlayFab._internalSettings.sessionTicket, callback);
+	    },
+	
+	    GetPurchase: function (request, callback) {
+	        if (PlayFab._internalSettings.sessionTicket == null) throw "Must be logged in to call this method";
+	
+	        PlayFab._internalSettings.ExecuteRequest(PlayFab._internalSettings.GetServerUrl() + "/Client/GetPurchase", request, "X-Authorization", PlayFab._internalSettings.sessionTicket, callback);
+	    },
+	
+	    GetUserInventory: function (request, callback) {
+	        if (PlayFab._internalSettings.sessionTicket == null) throw "Must be logged in to call this method";
+	
+	        PlayFab._internalSettings.ExecuteRequest(PlayFab._internalSettings.GetServerUrl() + "/Client/GetUserInventory", request, "X-Authorization", PlayFab._internalSettings.sessionTicket, callback);
+	    },
+	
+	    PayForPurchase: function (request, callback) {
+	        if (PlayFab._internalSettings.sessionTicket == null) throw "Must be logged in to call this method";
+	
+	        PlayFab._internalSettings.ExecuteRequest(PlayFab._internalSettings.GetServerUrl() + "/Client/PayForPurchase", request, "X-Authorization", PlayFab._internalSettings.sessionTicket, callback);
+	    },
+	
+	    PurchaseItem: function (request, callback) {
+	        if (PlayFab._internalSettings.sessionTicket == null) throw "Must be logged in to call this method";
+	
+	        PlayFab._internalSettings.ExecuteRequest(PlayFab._internalSettings.GetServerUrl() + "/Client/PurchaseItem", request, "X-Authorization", PlayFab._internalSettings.sessionTicket, callback);
+	    },
+	
+	    RedeemCoupon: function (request, callback) {
+	        if (PlayFab._internalSettings.sessionTicket == null) throw "Must be logged in to call this method";
+	
+	        PlayFab._internalSettings.ExecuteRequest(PlayFab._internalSettings.GetServerUrl() + "/Client/RedeemCoupon", request, "X-Authorization", PlayFab._internalSettings.sessionTicket, callback);
+	    },
+	
+	    StartPurchase: function (request, callback) {
+	        if (PlayFab._internalSettings.sessionTicket == null) throw "Must be logged in to call this method";
+	
+	        PlayFab._internalSettings.ExecuteRequest(PlayFab._internalSettings.GetServerUrl() + "/Client/StartPurchase", request, "X-Authorization", PlayFab._internalSettings.sessionTicket, callback);
+	    },
+	
+	    SubtractUserVirtualCurrency: function (request, callback) {
+	        if (PlayFab._internalSettings.sessionTicket == null) throw "Must be logged in to call this method";
+	
+	        PlayFab._internalSettings.ExecuteRequest(PlayFab._internalSettings.GetServerUrl() + "/Client/SubtractUserVirtualCurrency", request, "X-Authorization", PlayFab._internalSettings.sessionTicket, callback);
+	    },
+	
+	    UnlockContainerInstance: function (request, callback) {
+	        if (PlayFab._internalSettings.sessionTicket == null) throw "Must be logged in to call this method";
+	
+	        PlayFab._internalSettings.ExecuteRequest(PlayFab._internalSettings.GetServerUrl() + "/Client/UnlockContainerInstance", request, "X-Authorization", PlayFab._internalSettings.sessionTicket, callback);
+	    },
+	
+	    UnlockContainerItem: function (request, callback) {
+	        if (PlayFab._internalSettings.sessionTicket == null) throw "Must be logged in to call this method";
+	
+	        PlayFab._internalSettings.ExecuteRequest(PlayFab._internalSettings.GetServerUrl() + "/Client/UnlockContainerItem", request, "X-Authorization", PlayFab._internalSettings.sessionTicket, callback);
+	    },
+	
+	    AddFriend: function (request, callback) {
+	        if (PlayFab._internalSettings.sessionTicket == null) throw "Must be logged in to call this method";
+	
+	        PlayFab._internalSettings.ExecuteRequest(PlayFab._internalSettings.GetServerUrl() + "/Client/AddFriend", request, "X-Authorization", PlayFab._internalSettings.sessionTicket, callback);
+	    },
+	
+	    GetFriendsList: function (request, callback) {
+	        if (PlayFab._internalSettings.sessionTicket == null) throw "Must be logged in to call this method";
+	
+	        PlayFab._internalSettings.ExecuteRequest(PlayFab._internalSettings.GetServerUrl() + "/Client/GetFriendsList", request, "X-Authorization", PlayFab._internalSettings.sessionTicket, callback);
+	    },
+	
+	    RemoveFriend: function (request, callback) {
+	        if (PlayFab._internalSettings.sessionTicket == null) throw "Must be logged in to call this method";
+	
+	        PlayFab._internalSettings.ExecuteRequest(PlayFab._internalSettings.GetServerUrl() + "/Client/RemoveFriend", request, "X-Authorization", PlayFab._internalSettings.sessionTicket, callback);
+	    },
+	
+	    SetFriendTags: function (request, callback) {
+	        if (PlayFab._internalSettings.sessionTicket == null) throw "Must be logged in to call this method";
+	
+	        PlayFab._internalSettings.ExecuteRequest(PlayFab._internalSettings.GetServerUrl() + "/Client/SetFriendTags", request, "X-Authorization", PlayFab._internalSettings.sessionTicket, callback);
+	    },
+	
+	    RegisterForIOSPushNotification: function (request, callback) {
+	        if (PlayFab._internalSettings.sessionTicket == null) throw "Must be logged in to call this method";
+	
+	        PlayFab._internalSettings.ExecuteRequest(PlayFab._internalSettings.GetServerUrl() + "/Client/RegisterForIOSPushNotification", request, "X-Authorization", PlayFab._internalSettings.sessionTicket, callback);
+	    },
+	
+	    RestoreIOSPurchases: function (request, callback) {
+	        if (PlayFab._internalSettings.sessionTicket == null) throw "Must be logged in to call this method";
+	
+	        PlayFab._internalSettings.ExecuteRequest(PlayFab._internalSettings.GetServerUrl() + "/Client/RestoreIOSPurchases", request, "X-Authorization", PlayFab._internalSettings.sessionTicket, callback);
+	    },
+	
+	    ValidateIOSReceipt: function (request, callback) {
+	        if (PlayFab._internalSettings.sessionTicket == null) throw "Must be logged in to call this method";
+	
+	        PlayFab._internalSettings.ExecuteRequest(PlayFab._internalSettings.GetServerUrl() + "/Client/ValidateIOSReceipt", request, "X-Authorization", PlayFab._internalSettings.sessionTicket, callback);
+	    },
+	
+	    GetCurrentGames: function (request, callback) {
+	        if (PlayFab._internalSettings.sessionTicket == null) throw "Must be logged in to call this method";
+	
+	        PlayFab._internalSettings.ExecuteRequest(PlayFab._internalSettings.GetServerUrl() + "/Client/GetCurrentGames", request, "X-Authorization", PlayFab._internalSettings.sessionTicket, callback);
+	    },
+	
+	    GetGameServerRegions: function (request, callback) {
+	        if (PlayFab._internalSettings.sessionTicket == null) throw "Must be logged in to call this method";
+	
+	        PlayFab._internalSettings.ExecuteRequest(PlayFab._internalSettings.GetServerUrl() + "/Client/GetGameServerRegions", request, "X-Authorization", PlayFab._internalSettings.sessionTicket, callback);
+	    },
+	
+	    Matchmake: function (request, callback) {
+	        if (PlayFab._internalSettings.sessionTicket == null) throw "Must be logged in to call this method";
+	
+	        PlayFab._internalSettings.ExecuteRequest(PlayFab._internalSettings.GetServerUrl() + "/Client/Matchmake", request, "X-Authorization", PlayFab._internalSettings.sessionTicket, callback);
+	    },
+	
+	    StartGame: function (request, callback) {
+	        if (PlayFab._internalSettings.sessionTicket == null) throw "Must be logged in to call this method";
+	
+	        PlayFab._internalSettings.ExecuteRequest(PlayFab._internalSettings.GetServerUrl() + "/Client/StartGame", request, "X-Authorization", PlayFab._internalSettings.sessionTicket, callback);
+	    },
+	
+	    AndroidDevicePushNotificationRegistration: function (request, callback) {
+	        if (PlayFab._internalSettings.sessionTicket == null) throw "Must be logged in to call this method";
+	
+	        PlayFab._internalSettings.ExecuteRequest(PlayFab._internalSettings.GetServerUrl() + "/Client/AndroidDevicePushNotificationRegistration", request, "X-Authorization", PlayFab._internalSettings.sessionTicket, callback);
+	    },
+	
+	    ValidateGooglePlayPurchase: function (request, callback) {
+	        if (PlayFab._internalSettings.sessionTicket == null) throw "Must be logged in to call this method";
+	
+	        PlayFab._internalSettings.ExecuteRequest(PlayFab._internalSettings.GetServerUrl() + "/Client/ValidateGooglePlayPurchase", request, "X-Authorization", PlayFab._internalSettings.sessionTicket, callback);
+	    },
+	
+	    /**
+	     * @deprecated Please use WritePlayerEvent instead. 
+	     */
+	    LogEvent: function (request, callback) {
+	        if (PlayFab._internalSettings.sessionTicket == null) throw "Must be logged in to call this method";
+	
+	        PlayFab._internalSettings.ExecuteRequest(PlayFab._internalSettings.GetServerUrl() + "/Client/LogEvent", request, "X-Authorization", PlayFab._internalSettings.sessionTicket, callback);
+	    },
+	
+	    WriteCharacterEvent: function (request, callback) {
+	        if (PlayFab._internalSettings.sessionTicket == null) throw "Must be logged in to call this method";
+	
+	        PlayFab._internalSettings.ExecuteRequest(PlayFab._internalSettings.GetServerUrl() + "/Client/WriteCharacterEvent", request, "X-Authorization", PlayFab._internalSettings.sessionTicket, callback);
+	    },
+	
+	    WritePlayerEvent: function (request, callback) {
+	        if (PlayFab._internalSettings.sessionTicket == null) throw "Must be logged in to call this method";
+	
+	        PlayFab._internalSettings.ExecuteRequest(PlayFab._internalSettings.GetServerUrl() + "/Client/WritePlayerEvent", request, "X-Authorization", PlayFab._internalSettings.sessionTicket, callback);
+	    },
+	
+	    WriteTitleEvent: function (request, callback) {
+	        if (PlayFab._internalSettings.sessionTicket == null) throw "Must be logged in to call this method";
+	
+	        PlayFab._internalSettings.ExecuteRequest(PlayFab._internalSettings.GetServerUrl() + "/Client/WriteTitleEvent", request, "X-Authorization", PlayFab._internalSettings.sessionTicket, callback);
+	    },
+	
+	    AddSharedGroupMembers: function (request, callback) {
+	        if (PlayFab._internalSettings.sessionTicket == null) throw "Must be logged in to call this method";
+	
+	        PlayFab._internalSettings.ExecuteRequest(PlayFab._internalSettings.GetServerUrl() + "/Client/AddSharedGroupMembers", request, "X-Authorization", PlayFab._internalSettings.sessionTicket, callback);
+	    },
+	
+	    CreateSharedGroup: function (request, callback) {
+	        if (PlayFab._internalSettings.sessionTicket == null) throw "Must be logged in to call this method";
+	
+	        PlayFab._internalSettings.ExecuteRequest(PlayFab._internalSettings.GetServerUrl() + "/Client/CreateSharedGroup", request, "X-Authorization", PlayFab._internalSettings.sessionTicket, callback);
+	    },
+	
+	    GetSharedGroupData: function (request, callback) {
+	        if (PlayFab._internalSettings.sessionTicket == null) throw "Must be logged in to call this method";
+	
+	        PlayFab._internalSettings.ExecuteRequest(PlayFab._internalSettings.GetServerUrl() + "/Client/GetSharedGroupData", request, "X-Authorization", PlayFab._internalSettings.sessionTicket, callback);
+	    },
+	
+	    RemoveSharedGroupMembers: function (request, callback) {
+	        if (PlayFab._internalSettings.sessionTicket == null) throw "Must be logged in to call this method";
+	
+	        PlayFab._internalSettings.ExecuteRequest(PlayFab._internalSettings.GetServerUrl() + "/Client/RemoveSharedGroupMembers", request, "X-Authorization", PlayFab._internalSettings.sessionTicket, callback);
+	    },
+	
+	    UpdateSharedGroupData: function (request, callback) {
+	        if (PlayFab._internalSettings.sessionTicket == null) throw "Must be logged in to call this method";
+	
+	        PlayFab._internalSettings.ExecuteRequest(PlayFab._internalSettings.GetServerUrl() + "/Client/UpdateSharedGroupData", request, "X-Authorization", PlayFab._internalSettings.sessionTicket, callback);
+	    },
+	
+	    ExecuteCloudScript: function (request, callback) {
+	        if (PlayFab._internalSettings.sessionTicket == null) throw "Must be logged in to call this method";
+	
+	        PlayFab._internalSettings.ExecuteRequest(PlayFab._internalSettings.GetServerUrl() + "/Client/ExecuteCloudScript", request, "X-Authorization", PlayFab._internalSettings.sessionTicket, callback);
+	    },
+	
+	    /**
+	     * @deprecated Please use ExecuteCloudScript instead. 
+	     */
+	    GetCloudScriptUrl: function (request, callback) {
+	        if (PlayFab._internalSettings.sessionTicket == null) throw "Must be logged in to call this method";
+	
+	        var overloadCallback = function (result, error) {
+	            PlayFab._internalSettings.logicServerUrl = result.data.Url;
+	            if (callback != null && typeof (callback) == "function")
+	                callback(result, error);
+	        };
+	        PlayFab._internalSettings.ExecuteRequest(PlayFab._internalSettings.GetServerUrl() + "/Client/GetCloudScriptUrl", request, "X-Authorization", PlayFab._internalSettings.sessionTicket, overloadCallback);
+	    },
+	
+	    /**
+	     * @deprecated Please use ExecuteCloudScript instead. 
+	     */
+	    RunCloudScript: function (request, callback) {
+	        if (PlayFab._internalSettings.sessionTicket == null) throw "Must be logged in to call this method";
+	
+	        PlayFab._internalSettings.ExecuteRequest(PlayFab._internalSettings.GetLogicServerUrl() + "/Client/RunCloudScript", request, "X-Authorization", PlayFab._internalSettings.sessionTicket, callback);
+	    },
+	
+	    GetContentDownloadUrl: function (request, callback) {
+	        if (PlayFab._internalSettings.sessionTicket == null) throw "Must be logged in to call this method";
+	
+	        PlayFab._internalSettings.ExecuteRequest(PlayFab._internalSettings.GetServerUrl() + "/Client/GetContentDownloadUrl", request, "X-Authorization", PlayFab._internalSettings.sessionTicket, callback);
+	    },
+	
+	    GetAllUsersCharacters: function (request, callback) {
+	        if (PlayFab._internalSettings.sessionTicket == null) throw "Must be logged in to call this method";
+	
+	        PlayFab._internalSettings.ExecuteRequest(PlayFab._internalSettings.GetServerUrl() + "/Client/GetAllUsersCharacters", request, "X-Authorization", PlayFab._internalSettings.sessionTicket, callback);
+	    },
+	
+	    GetCharacterLeaderboard: function (request, callback) {
+	        if (PlayFab._internalSettings.sessionTicket == null) throw "Must be logged in to call this method";
+	
+	        PlayFab._internalSettings.ExecuteRequest(PlayFab._internalSettings.GetServerUrl() + "/Client/GetCharacterLeaderboard", request, "X-Authorization", PlayFab._internalSettings.sessionTicket, callback);
+	    },
+	
+	    GetCharacterStatistics: function (request, callback) {
+	        if (PlayFab._internalSettings.sessionTicket == null) throw "Must be logged in to call this method";
+	
+	        PlayFab._internalSettings.ExecuteRequest(PlayFab._internalSettings.GetServerUrl() + "/Client/GetCharacterStatistics", request, "X-Authorization", PlayFab._internalSettings.sessionTicket, callback);
+	    },
+	
+	    GetLeaderboardAroundCharacter: function (request, callback) {
+	        if (PlayFab._internalSettings.sessionTicket == null) throw "Must be logged in to call this method";
+	
+	        PlayFab._internalSettings.ExecuteRequest(PlayFab._internalSettings.GetServerUrl() + "/Client/GetLeaderboardAroundCharacter", request, "X-Authorization", PlayFab._internalSettings.sessionTicket, callback);
+	    },
+	
+	    GetLeaderboardForUserCharacters: function (request, callback) {
+	        if (PlayFab._internalSettings.sessionTicket == null) throw "Must be logged in to call this method";
+	
+	        PlayFab._internalSettings.ExecuteRequest(PlayFab._internalSettings.GetServerUrl() + "/Client/GetLeaderboardForUserCharacters", request, "X-Authorization", PlayFab._internalSettings.sessionTicket, callback);
+	    },
+	
+	    GrantCharacterToUser: function (request, callback) {
+	        if (PlayFab._internalSettings.sessionTicket == null) throw "Must be logged in to call this method";
+	
+	        PlayFab._internalSettings.ExecuteRequest(PlayFab._internalSettings.GetServerUrl() + "/Client/GrantCharacterToUser", request, "X-Authorization", PlayFab._internalSettings.sessionTicket, callback);
+	    },
+	
+	    UpdateCharacterStatistics: function (request, callback) {
+	        if (PlayFab._internalSettings.sessionTicket == null) throw "Must be logged in to call this method";
+	
+	        PlayFab._internalSettings.ExecuteRequest(PlayFab._internalSettings.GetServerUrl() + "/Client/UpdateCharacterStatistics", request, "X-Authorization", PlayFab._internalSettings.sessionTicket, callback);
+	    },
+	
+	    GetCharacterData: function (request, callback) {
+	        if (PlayFab._internalSettings.sessionTicket == null) throw "Must be logged in to call this method";
+	
+	        PlayFab._internalSettings.ExecuteRequest(PlayFab._internalSettings.GetServerUrl() + "/Client/GetCharacterData", request, "X-Authorization", PlayFab._internalSettings.sessionTicket, callback);
+	    },
+	
+	    GetCharacterReadOnlyData: function (request, callback) {
+	        if (PlayFab._internalSettings.sessionTicket == null) throw "Must be logged in to call this method";
+	
+	        PlayFab._internalSettings.ExecuteRequest(PlayFab._internalSettings.GetServerUrl() + "/Client/GetCharacterReadOnlyData", request, "X-Authorization", PlayFab._internalSettings.sessionTicket, callback);
+	    },
+	
+	    UpdateCharacterData: function (request, callback) {
+	        if (PlayFab._internalSettings.sessionTicket == null) throw "Must be logged in to call this method";
+	
+	        PlayFab._internalSettings.ExecuteRequest(PlayFab._internalSettings.GetServerUrl() + "/Client/UpdateCharacterData", request, "X-Authorization", PlayFab._internalSettings.sessionTicket, callback);
+	    },
+	
+	    ValidateAmazonIAPReceipt: function (request, callback) {
+	        if (PlayFab._internalSettings.sessionTicket == null) throw "Must be logged in to call this method";
+	
+	        PlayFab._internalSettings.ExecuteRequest(PlayFab._internalSettings.GetServerUrl() + "/Client/ValidateAmazonIAPReceipt", request, "X-Authorization", PlayFab._internalSettings.sessionTicket, callback);
+	    },
+	
+	    AcceptTrade: function (request, callback) {
+	        if (PlayFab._internalSettings.sessionTicket == null) throw "Must be logged in to call this method";
+	
+	        PlayFab._internalSettings.ExecuteRequest(PlayFab._internalSettings.GetServerUrl() + "/Client/AcceptTrade", request, "X-Authorization", PlayFab._internalSettings.sessionTicket, callback);
+	    },
+	
+	    CancelTrade: function (request, callback) {
+	        if (PlayFab._internalSettings.sessionTicket == null) throw "Must be logged in to call this method";
+	
+	        PlayFab._internalSettings.ExecuteRequest(PlayFab._internalSettings.GetServerUrl() + "/Client/CancelTrade", request, "X-Authorization", PlayFab._internalSettings.sessionTicket, callback);
+	    },
+	
+	    GetPlayerTrades: function (request, callback) {
+	        if (PlayFab._internalSettings.sessionTicket == null) throw "Must be logged in to call this method";
+	
+	        PlayFab._internalSettings.ExecuteRequest(PlayFab._internalSettings.GetServerUrl() + "/Client/GetPlayerTrades", request, "X-Authorization", PlayFab._internalSettings.sessionTicket, callback);
+	    },
+	
+	    GetTradeStatus: function (request, callback) {
+	        if (PlayFab._internalSettings.sessionTicket == null) throw "Must be logged in to call this method";
+	
+	        PlayFab._internalSettings.ExecuteRequest(PlayFab._internalSettings.GetServerUrl() + "/Client/GetTradeStatus", request, "X-Authorization", PlayFab._internalSettings.sessionTicket, callback);
+	    },
+	
+	    OpenTrade: function (request, callback) {
+	        if (PlayFab._internalSettings.sessionTicket == null) throw "Must be logged in to call this method";
+	
+	        PlayFab._internalSettings.ExecuteRequest(PlayFab._internalSettings.GetServerUrl() + "/Client/OpenTrade", request, "X-Authorization", PlayFab._internalSettings.sessionTicket, callback);
+	    },
+	
+	    AttributeInstall: function (request, callback) {
+	        if (PlayFab._internalSettings.sessionTicket == null) throw "Must be logged in to call this method";
+	
+	        var overloadCallback = function (result, error) {
+	            // Modify advertisingIdType:  Prevents us from sending the id multiple times, and allows automated tests to determine id was sent successfully
+	            PlayFab.settings.advertisingIdType += "_Successful";
+	
+	            if (callback != null && typeof (callback) == "function")
+	                callback(result, error);
+	        };
+	        PlayFab._internalSettings.ExecuteRequest(PlayFab._internalSettings.GetServerUrl() + "/Client/AttributeInstall", request, "X-Authorization", PlayFab._internalSettings.sessionTicket, overloadCallback);
+	    },
+	
+	    GetPlayerSegments: function (request, callback) {
+	        if (PlayFab._internalSettings.sessionTicket == null) throw "Must be logged in to call this method";
+	
+	        PlayFab._internalSettings.ExecuteRequest(PlayFab._internalSettings.GetServerUrl() + "/Client/GetPlayerSegments", request, "X-Authorization", PlayFab._internalSettings.sessionTicket, callback);
+	    },
+	
+	    GetPlayerTags: function (request, callback) {
+	        if (PlayFab._internalSettings.sessionTicket == null) throw "Must be logged in to call this method";
+	
+	        PlayFab._internalSettings.ExecuteRequest(PlayFab._internalSettings.GetServerUrl() + "/Client/GetPlayerTags", request, "X-Authorization", PlayFab._internalSettings.sessionTicket, callback);
+	    },
+	
+	    _MultiStepClientLogin: function (needsAttribution) {
+	        if (needsAttribution && !PlayFab.settings.disableAdvertising && PlayFab.settings.advertisingIdType !== null && PlayFab.settings.advertisingIdValue !== null) {
+	            var request = {};
+	            if (PlayFab.settings.advertisingIdType === PlayFab.settings.AD_TYPE_IDFA)
+	                request.Idfa = PlayFab.settings.advertisingIdValue;
+	            else if (PlayFab.settings.advertisingIdType === PlayFab.settings.AD_TYPE_ANDROID_ID)
+	                request.Android_Id = PlayFab.settings.advertisingIdValue;
+	            else
+	                return;
+	            PlayFab.ClientApi.AttributeInstall(request, null);
+	        }
+	    }
+	};
+	
+	var PlayFabClientSDK = PlayFab.ClientApi;
+	
+	
+	// above downloaded from https://download.playfab.com/PlayFabClientApi.js
+	// below added by hand for this node package
+	var exports = module.exports;
+	exports.PlayFab = PlayFab;
+	exports.PlayFabClientSDK = PlayFabClientSDK;
+
+
+/***/ },
+/* 137 */
+/***/ function(module, exports, __webpack_require__) {
+
+	var v1 = __webpack_require__(138);
+	var v4 = __webpack_require__(141);
+	
+	var uuid = v4;
+	uuid.v1 = v1;
+	uuid.v4 = v4;
+	
+	module.exports = uuid;
+
+
+/***/ },
+/* 138 */
+/***/ function(module, exports, __webpack_require__) {
+
+	// Unique ID creation requires a high quality random # generator.  We feature
+	// detect to determine the best RNG source, normalizing to a function that
+	// returns 128-bits of randomness, since that's what's usually required
+	var rng = __webpack_require__(139);
+	var bytesToUuid = __webpack_require__(140);
+	
+	// **`v1()` - Generate time-based UUID**
+	//
+	// Inspired by https://github.com/LiosK/UUID.js
+	// and http://docs.python.org/library/uuid.html
+	
+	// random #'s we need to init node and clockseq
+	var _seedBytes = rng();
+	
+	// Per 4.5, create and 48-bit node id, (47 random bits + multicast bit = 1)
+	var _nodeId = [
+	  _seedBytes[0] | 0x01,
+	  _seedBytes[1], _seedBytes[2], _seedBytes[3], _seedBytes[4], _seedBytes[5]
+	];
+	
+	// Per 4.2.2, randomize (14 bit) clockseq
+	var _clockseq = (_seedBytes[6] << 8 | _seedBytes[7]) & 0x3fff;
+	
+	// Previous uuid creation time
+	var _lastMSecs = 0, _lastNSecs = 0;
+	
+	// See https://github.com/broofa/node-uuid for API details
+	function v1(options, buf, offset) {
+	  var i = buf && offset || 0;
+	  var b = buf || [];
+	
+	  options = options || {};
+	
+	  var clockseq = options.clockseq !== undefined ? options.clockseq : _clockseq;
+	
+	  // UUID timestamps are 100 nano-second units since the Gregorian epoch,
+	  // (1582-10-15 00:00).  JSNumbers aren't precise enough for this, so
+	  // time is handled internally as 'msecs' (integer milliseconds) and 'nsecs'
+	  // (100-nanoseconds offset from msecs) since unix epoch, 1970-01-01 00:00.
+	  var msecs = options.msecs !== undefined ? options.msecs : new Date().getTime();
+	
+	  // Per 4.2.1.2, use count of uuid's generated during the current clock
+	  // cycle to simulate higher resolution clock
+	  var nsecs = options.nsecs !== undefined ? options.nsecs : _lastNSecs + 1;
+	
+	  // Time since last uuid creation (in msecs)
+	  var dt = (msecs - _lastMSecs) + (nsecs - _lastNSecs)/10000;
+	
+	  // Per 4.2.1.2, Bump clockseq on clock regression
+	  if (dt < 0 && options.clockseq === undefined) {
+	    clockseq = clockseq + 1 & 0x3fff;
+	  }
+	
+	  // Reset nsecs if clock regresses (new clockseq) or we've moved onto a new
+	  // time interval
+	  if ((dt < 0 || msecs > _lastMSecs) && options.nsecs === undefined) {
+	    nsecs = 0;
+	  }
+	
+	  // Per 4.2.1.2 Throw error if too many uuids are requested
+	  if (nsecs >= 10000) {
+	    throw new Error('uuid.v1(): Can\'t create more than 10M uuids/sec');
+	  }
+	
+	  _lastMSecs = msecs;
+	  _lastNSecs = nsecs;
+	  _clockseq = clockseq;
+	
+	  // Per 4.1.4 - Convert from unix epoch to Gregorian epoch
+	  msecs += 12219292800000;
+	
+	  // `time_low`
+	  var tl = ((msecs & 0xfffffff) * 10000 + nsecs) % 0x100000000;
+	  b[i++] = tl >>> 24 & 0xff;
+	  b[i++] = tl >>> 16 & 0xff;
+	  b[i++] = tl >>> 8 & 0xff;
+	  b[i++] = tl & 0xff;
+	
+	  // `time_mid`
+	  var tmh = (msecs / 0x100000000 * 10000) & 0xfffffff;
+	  b[i++] = tmh >>> 8 & 0xff;
+	  b[i++] = tmh & 0xff;
+	
+	  // `time_high_and_version`
+	  b[i++] = tmh >>> 24 & 0xf | 0x10; // include version
+	  b[i++] = tmh >>> 16 & 0xff;
+	
+	  // `clock_seq_hi_and_reserved` (Per 4.2.2 - include variant)
+	  b[i++] = clockseq >>> 8 | 0x80;
+	
+	  // `clock_seq_low`
+	  b[i++] = clockseq & 0xff;
+	
+	  // `node`
+	  var node = options.node || _nodeId;
+	  for (var n = 0; n < 6; ++n) {
+	    b[i + n] = node[n];
+	  }
+	
+	  return buf ? buf : bytesToUuid(b);
+	}
+	
+	module.exports = v1;
+
+
+/***/ },
+/* 139 */
+/***/ function(module, exports) {
+
+	/* WEBPACK VAR INJECTION */(function(global) {// Unique ID creation requires a high quality random # generator.  In the
+	// browser this is a little complicated due to unknown quality of Math.random()
+	// and inconsistent support for the `crypto` API.  We do the best we can via
+	// feature-detection
+	var rng;
+	
+	var crypto = global.crypto || global.msCrypto; // for IE 11
+	if (crypto && crypto.getRandomValues) {
+	  // WHATWG crypto RNG - http://wiki.whatwg.org/wiki/Crypto
+	  var rnds8 = new Uint8Array(16);
+	  rng = function whatwgRNG() {
+	    crypto.getRandomValues(rnds8);
+	    return rnds8;
+	  };
+	}
+	
+	if (!rng) {
+	  // Math.random()-based (RNG)
+	  //
+	  // If all else fails, use Math.random().  It's fast, but is of unspecified
+	  // quality.
+	  var  rnds = new Array(16);
+	  rng = function() {
+	    for (var i = 0, r; i < 16; i++) {
+	      if ((i & 0x03) === 0) r = Math.random() * 0x100000000;
+	      rnds[i] = r >>> ((i & 0x03) << 3) & 0xff;
+	    }
+	
+	    return rnds;
+	  };
+	}
+	
+	module.exports = rng;
+	
+	/* WEBPACK VAR INJECTION */}.call(exports, (function() { return this; }())))
+
+/***/ },
+/* 140 */
+/***/ function(module, exports) {
+
+	/**
+	 * Convert array of 16 byte values to UUID string format of the form:
+	 * XXXXXXXX-XXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX
+	 */
+	var byteToHex = [];
+	for (var i = 0; i < 256; ++i) {
+	  byteToHex[i] = (i + 0x100).toString(16).substr(1);
+	}
+	
+	function bytesToUuid(buf, offset) {
+	  var i = offset || 0;
+	  var bth = byteToHex;
+	  return  bth[buf[i++]] + bth[buf[i++]] +
+	          bth[buf[i++]] + bth[buf[i++]] + '-' +
+	          bth[buf[i++]] + bth[buf[i++]] + '-' +
+	          bth[buf[i++]] + bth[buf[i++]] + '-' +
+	          bth[buf[i++]] + bth[buf[i++]] + '-' +
+	          bth[buf[i++]] + bth[buf[i++]] +
+	          bth[buf[i++]] + bth[buf[i++]] +
+	          bth[buf[i++]] + bth[buf[i++]];
+	}
+	
+	module.exports = bytesToUuid;
+
+
+/***/ },
+/* 141 */
+/***/ function(module, exports, __webpack_require__) {
+
+	var rng = __webpack_require__(139);
+	var bytesToUuid = __webpack_require__(140);
+	
+	function v4(options, buf, offset) {
+	  var i = buf && offset || 0;
+	
+	  if (typeof(options) == 'string') {
+	    buf = options == 'binary' ? new Array(16) : null;
+	    options = null;
+	  }
+	  options = options || {};
+	
+	  var rnds = options.random || (options.rng || rng)();
+	
+	  // Per 4.4, set bits for version and `clock_seq_hi_and_reserved`
+	  rnds[6] = (rnds[6] & 0x0f) | 0x40;
+	  rnds[8] = (rnds[8] & 0x3f) | 0x80;
+	
+	  // Copy bytes to buffer, if provided
+	  if (buf) {
+	    for (var ii = 0; ii < 16; ++ii) {
+	      buf[i + ii] = rnds[ii];
+	    }
+	  }
+	
+	  return buf || bytesToUuid(rnds);
+	}
+	
+	module.exports = v4;
+
+
+/***/ },
+/* 142 */
+/***/ function(module, exports, __webpack_require__) {
+
+	'use strict';
+	
+	Object.defineProperty(exports, "__esModule", {
+	  value: true
+	});
+	exports.Persister = undefined;
+	
+	var _createClass = function () { function defineProperties(target, props) { for (var i = 0; i < props.length; i++) { var descriptor = props[i]; descriptor.enumerable = descriptor.enumerable || false; descriptor.configurable = true; if ("value" in descriptor) descriptor.writable = true; Object.defineProperty(target, descriptor.key, descriptor); } } return function (Constructor, protoProps, staticProps) { if (protoProps) defineProperties(Constructor.prototype, protoProps); if (staticProps) defineProperties(Constructor, staticProps); return Constructor; }; }();
+	
+	exports.start = start;
+	
+	var _encoder = __webpack_require__(132);
+	
+	var _encoder2 = _interopRequireDefault(_encoder);
+	
+	var _localStorageBackend = __webpack_require__(134);
+	
+	var _localStorageBackend2 = _interopRequireDefault(_localStorageBackend);
+	
+	var _scheduler = __webpack_require__(143);
+	
+	var _assert = __webpack_require__(145);
+	
+	function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
+	
+	function _classCallCheck(instance, Constructor) { if (!(instance instanceof Constructor)) { throw new TypeError("Cannot call a class as a function"); } }
+	
+	var defaultConfig = {
+	  encoder: _encoder2.default,
+	  Scheduler: _scheduler.Scheduler,
+	  backend: _localStorageBackend2.default,
+	  onFetch: function onFetch() {},
+	  onPush: function onPush() {},
+	  onClear: function onClear() {},
+	  // getState: required
+	  // setState: required
+	
+	  // initState is documented as required, but it's actually not. setState with
+	  // a default is acceptable instead, because that's a nicer way to do things
+	  // when there's es6 support. It matches redux too. Example:
+	  // function setState(state={count: 0}) { ... }
+	  initState: function initState() {}
+	};
+	
+	var Persister = exports.Persister = function () {
+	  function Persister(config) {
+	    _classCallCheck(this, Persister);
+	
+	    this.config = Object.assign({}, defaultConfig, config);
+	    this.scheduler = new this.config.Scheduler(Object.assign({}, config, { persister: this }));
+	  }
+	
+	  _createClass(Persister, [{
+	    key: 'isStarted',
+	    value: function isStarted() {
+	      return this.scheduler.isStarted();
+	    }
+	  }, {
+	    key: 'stop',
+	    value: function stop() {
+	      this.scheduler.stop();
+	      if (this.config.backend.stop) {
+	        return this.config.backend.stop();
+	      }
+	    }
+	  }, {
+	    key: 'start',
+	    value: function start() {
+	      var _this = this;
+	
+	      var afterPull = function afterPull(fetched) {
+	        _this.scheduler.start();
+	        return fetched;
+	      };
+	      if (this.config.backend.start) {
+	        // start() is expected to fetch, to support fetch-and-login in one request.
+	        return this.config.backend.start().then(function (fetched) {
+	          _this._pull(fetched);
+	          return afterPull(fetched);
+	        });
+	      } else {
+	        return this.pull().then(afterPull);
+	      }
+	    }
+	  }, {
+	    key: 'fetch',
+	    value: function fetch() {
+	      var promise = this.config.backend.fetch();
+	      this.config.onFetch(promise);
+	      return promise;
+	    }
+	  }, {
+	    key: '_pull',
+	    value: function _pull(_ref) {
+	      var state = _ref.state,
+	          empty = _ref.empty;
+	
+	      (0, _assert.assert)(empty || state !== undefined, 'a persister fetch returned an undefined but nonempty state');
+	      if (empty) {
+	        // we're looking at a new player - reset their state
+	        state = this.config.initState();
+	      }
+	      this.config.setState(state);
+	      (0, _assert.assert)(this.config.getState() !== undefined, 'persister.initState() is required');
+	    }
+	  }, {
+	    key: 'pull',
+	    value: function pull() {
+	      var _this2 = this;
+	
+	      var promise = this.config.backend.fetch();
+	      promise.then(function (fetched) {
+	        return _this2._pull(fetched);
+	      });
+	      return promise;
+	    }
+	  }, {
+	    key: 'push',
+	    value: function push() {
+	      var ret = this.config.backend.push(this.config.getState());
+	      this.config.onPush(ret);
+	      return ret;
+	    }
+	    // some backends handle the last push, during page unload, differently
+	
+	  }, {
+	    key: '_lastPush',
+	    value: function _lastPush() {
+	      var pushFn = this.config.backend.lastPush || this.config.backend.push;
+	      var ret = pushFn.call(this.config.backend, this.config.getState());
+	      this.config.onPush(ret);
+	      return ret;
+	    }
+	  }, {
+	    key: 'clear',
+	    value: function clear() {
+	      var ret = this.config.backend.clear();
+	      this.config.onClear(ret);
+	      return ret;
+	    }
+	  }, {
+	    key: 'export',
+	    value: function _export() {
+	      return this.config.encoder.encode(this.config.getState());
+	    }
+	  }, {
+	    key: 'import',
+	    value: function _import(encoded) {
+	      this.config.setState(this.config.encoder.decode(encoded));
+	    }
+	  }]);
+	
+	  return Persister;
+	}();
+	
+	function start(config) {
+	  var ret = new Persister(config);
+	  ret.start();
+	  return ret;
+	}
+
+/***/ },
+/* 143 */
 /***/ function(module, exports, __webpack_require__) {
 
 	'use strict';
@@ -4736,11 +6894,11 @@ return /******/ (function(modules) { // webpackBootstrap
 	
 	var _createClass = function () { function defineProperties(target, props) { for (var i = 0; i < props.length; i++) { var descriptor = props[i]; descriptor.enumerable = descriptor.enumerable || false; descriptor.configurable = true; if ("value" in descriptor) descriptor.writable = true; Object.defineProperty(target, descriptor.key, descriptor); } } return function (Constructor, protoProps, staticProps) { if (protoProps) defineProperties(Constructor.prototype, protoProps); if (staticProps) defineProperties(Constructor, staticProps); return Constructor; }; }();
 	
-	var _jquery = __webpack_require__(136);
+	var _jquery = __webpack_require__(144);
 	
 	var _jquery2 = _interopRequireDefault(_jquery);
 	
-	var _assert = __webpack_require__(137);
+	var _assert = __webpack_require__(145);
 	
 	function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
 	
@@ -4749,8 +6907,7 @@ return /******/ (function(modules) { // webpackBootstrap
 	var defaultConfig = {
 	  intervalMillis: 5 * 60 * 1000,
 	  pushOnInterval: true,
-	  pushOnClose: true,
-	  pullOnLoad: true
+	  pushOnClose: true
 	};
 	
 	var Scheduler = exports.Scheduler = function () {
@@ -4762,6 +6919,9 @@ return /******/ (function(modules) { // webpackBootstrap
 	    this.config = Object.assign({}, defaultConfig, config);
 	    this._push = function () {
 	      return _this.config.persister.push();
+	    };
+	    this._lastPush = function () {
+	      return _this.config.persister._lastPush();
 	    };
 	  }
 	
@@ -4780,10 +6940,7 @@ return /******/ (function(modules) { // webpackBootstrap
 	        this.runner.interval = window.setInterval(this._push, this.config.intervalMillis);
 	      }
 	      if (this.config.pushOnClose) {
-	        (0, _jquery2.default)(window).on('unload', this._push);
-	      }
-	      if (this.config.pullOnLoad) {
-	        this.config.persister.pull();
+	        (0, _jquery2.default)(window).on('unload', this._lastPush);
 	      }
 	      (0, _assert.assert)(this.isStarted());
 	    }
@@ -4795,7 +6952,7 @@ return /******/ (function(modules) { // webpackBootstrap
 	        window.clearInterval(this.runner.interval);
 	      }
 	      if (this.config.pushOnClose) {
-	        (0, _jquery2.default)(window).off('unload', this._push);
+	        (0, _jquery2.default)(window).off('unload', this._lastPush);
 	      }
 	      delete this.runner;
 	      (0, _assert.assert)(!this.isStarted());
@@ -4806,7 +6963,7 @@ return /******/ (function(modules) { // webpackBootstrap
 	}();
 
 /***/ },
-/* 136 */
+/* 144 */
 /***/ function(module, exports, __webpack_require__) {
 
 	var __WEBPACK_AMD_DEFINE_ARRAY__, __WEBPACK_AMD_DEFINE_RESULT__;/*!
@@ -15032,7 +17189,7 @@ return /******/ (function(modules) { // webpackBootstrap
 
 
 /***/ },
-/* 137 */
+/* 145 */
 /***/ function(module, exports) {
 
 	'use strict';
