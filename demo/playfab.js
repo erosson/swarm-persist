@@ -47,7 +47,15 @@ var persister = new persist.Persister({
 });
 // Can't use persist.start() if we're waiting on start(). new Persister().start() returns the promise
 persister.start().then(function(res){
-  console.log('started', res, persister.config.backend.auth.user);
+  console.log('started', res, JSON.stringify(res.user));
+  document.getElementById('playFabId').innerText = res.user.PlayFabId
+  document.getElementById('userLink').href = 'https://developer.playfab.com/en-us/'+persister.config.backend.config.titleId+'/players/'+res.user.PlayFabId+'/data'
+  if (res.user.CustomIdInfo) {
+    document.getElementById('customId').innerText = res.user.CustomIdInfo.CustomId
+  }
+  if (res.user.PrivateInfo && res.user.PrivateInfo.Email) {
+    document.getElementById('email').innerText = res.user.PrivateInfo.Email
+  }
 });
 
 // The onclick handler for the "persist now" button.
