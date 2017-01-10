@@ -6,7 +6,6 @@ import {assert} from './assert'
 const defaultConfig = {
   encoder,
   Scheduler,
-  pullOnLoad: true,
   backend: localStorageBackend,
   onFetch: function(){},
   onPush: function(){},
@@ -31,28 +30,16 @@ export class Persister {
   isStarted() { return this.scheduler.isStarted() }
   stop() { this.scheduler.stop() }
   start() {
-    let ret
+    let promise
     this.scheduler.start()
     if (this.config.backend.init) {
-      if (this.config.pullOnLoad) {
-        // both pull and init. Init includes a fetch.
-        ret = this.config.backend.init().then(fetched => this._pull(fetched))
-      }
-      else {
-      	// init but no pull
-      	ret = this.config.backend.init()
-      }
+      promise = this.config.backend.init().then(fetched => this._pull(fetched))
     }
-    // pull but no init
-    else if (this.config.pullOnLoad) {
-      ret = this.pull()
-    }
-    // no pull, no init
     else {
-      ret = new Promise(resolve => resolve())
+      promise = this.pull()
     }
-    this.config.onInit(ret)
-    return ret
+    this.config.onInit(promise)
+    return promise
   }
 
   fetch() {
