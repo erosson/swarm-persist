@@ -13,7 +13,9 @@ var persister = new persist.Persister({
     draw();
   },
   // Playfab configuration.
-  backend: new persist.PlayFabBackend({titleId: '9F7C'}),
+  backend: new persist.PlayFabBackend({
+    titleId: '9F7C',
+  }),
   // How often we push to playfab.
   intervalMillis: 10 * 1000,
   // onPush(), onFetch(), onClear() are optional, but allow for error handling

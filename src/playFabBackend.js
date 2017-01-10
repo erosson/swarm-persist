@@ -5,6 +5,9 @@ const defaultConfig = {
   localStorageKey: 'swarm-persist-playfab-state',
   localStorage: global.window && window.localStorage,
   stateKey: 'state',
+  // try to refresh the login every 4 hours. Way more often than needed for a
+  // 24 hour expiry, but it doesn't hurt.
+  loginRefreshMillis: 4 * 60 * 60 * 1000,
 }
 
 class PlayFabBackendAuth {
@@ -13,8 +16,7 @@ class PlayFabBackendAuth {
     this.key = key
     this.titleId = titleId
   }
-  login(customId) {
-    // we already have login credentials - login, easy
+  login(customId=this.fetchAuth()) {
     return new Promise((resolve, reject) => {
       PlayFabClientSDK.LoginWithCustomID({
         TitleId: this.titleId,
@@ -29,6 +31,7 @@ class PlayFabBackendAuth {
           return reject(error)
         }
         this.user = res
+        //console.log('playfab login success')
         return resolve(res)
       })
     })
@@ -103,7 +106,6 @@ export class PlayFabBackend {
     this.auth = new PlayFabBackendAuth(this.config.localStorage, this.config.localStorageKey, this.config.titleId)
   }
   _parseFetchUserData(userdata={}) {
-    // TODO configurable key/prefix
     // TODO chunking
     const container = userdata[this.config.stateKey]
     if (!container) {
@@ -116,6 +118,13 @@ export class PlayFabBackend {
   }
   // https://api.playfab.com/Documentation/Client/method/LoginWithCustomID
   start() {
+    // Login sessions expire after 24 hours:
+    // https://community.playfab.com/idea/224/205582298-Session-ticket-expiry-Timestamp-.html
+    //
+    // Re-login to refresh the session periodically. CustomId logins are
+    // invisible to the user, so there's no real cost.
+    const relog = () => this.auth.login()
+    this._loginRefresher = window.setInterval(relog, this.config.loginRefreshMillis)
     // login and fetch in one step
     return new Promise((resolve, reject) => {
       this.auth.loginOrCreate().then(res => {
@@ -125,6 +134,9 @@ export class PlayFabBackend {
         resolve(ret)
       }, error => reject(error))
     })
+  }
+  stop() {
+    window.clearInterval(this._loginRefresher)
   }
   // https://api.playfab.com/Documentation/Client/method/GetUserData
   fetch() {
