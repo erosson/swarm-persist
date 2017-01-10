@@ -10,7 +10,6 @@ const defaultConfig = {
   onFetch: function(){},
   onPush: function(){},
   onClear: function(){},
-  onInit: function(){},
   // getState: required
   // setState: required
 
@@ -38,7 +37,6 @@ export class Persister {
     else {
       promise = this.pull()
     }
-    this.config.onInit(promise)
     return promise
   }
 

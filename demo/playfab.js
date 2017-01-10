@@ -1,5 +1,5 @@
 // All the swarm-persist code needed to keep localstorage updated.
-var persister = persist.start({
+var persister = new persist.Persister({
   // initState/getState/setState are the only required properties.
   initState: function() {
     return {count: 0};
@@ -44,10 +44,10 @@ var persister = persist.start({
     });
   },
   onInit: function(promise) {
-    promise.then(function() {
-      console.log('init', persister.backend.auth.user);
-    });
   },
+});
+persister.start().then(function(){
+  console.log('started', persister.config.backend.auth.user);
 });
 
 // The onclick handler for the "persist now" button.
