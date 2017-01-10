@@ -26,7 +26,20 @@
   <div>
     <p>Logged in as <a target="_blank" id="userLink" href="#"><span id="playFabId">no-id</span></a>,
      <span id="customId">no-custom-id</span>, <span id="email">no-email</span>
+     <button onclick="window.logout()">Log out (create a new guest account, reset game state)</button>
     </p>
   </div>
+  <form onsubmit="window.signup(this); return false">
+    <label>username: <input name="username"></label>
+    <label>email: <input name="email"></label>
+    <label>password: <input name="password"></label>
+    <label>confirm: <input name="password2"></label>
+    <button type="submit">Sign up (connect an email to this account)</button>
+  </form>
+  <form onsubmit="window.login(this); return false">
+    <label>email: <input name="email"></label>
+    <label>password: <input name="password"></label>
+    <button type="submit">Log in (switch to a different account/save-state)</button>
+  </form>
 </body>
 </html>

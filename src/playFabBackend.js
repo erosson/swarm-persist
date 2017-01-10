@@ -1,6 +1,12 @@
 import {PlayFab, PlayFabClientSDK} from 'playfab-sdk-browser'
 import uuid from 'uuid'
 
+if (global.window) {
+  // expose playfab apis to user code, for login/signup
+  window.PlayFabClientSDK = PlayFabClientSDK
+  window.PlayFab = PlayFab
+}
+
 const defaultConfig = {
   localStorageKey: 'swarm-persist-playfab-state',
   localStorage: global.window && window.localStorage,
@@ -87,6 +93,16 @@ class PlayFabBackendAuth {
   clearAuth() {
     this.localStorage.removeItem(this.key)
   }
+  logout() {
+    // Remove the custom id cookie, so we won't be logged in as this user upon page reload.
+    this.clearAuth()
+    // Remove playfab's login data. There's no official method, but there's source code!
+    // https://github.com/PlayFab/JavaScriptSDK/blob/master/PlayFabSDK/PlayFabClientApi.js
+    PlayFab._internalSettings.sessionTicket = null
+    if (PlayFabClientSDK.IsClientLoggedIn()) {
+      console.error("couldn't log out from playfab")
+    }
+  }
   loginOrCreate() {
     const customId = this.fetchAuth()
     if (customId) {
@@ -134,6 +150,14 @@ export class PlayFabBackend {
         resolve(ret)
       }, error => reject(error))
     })
+  }
+  logoutAndStop() {
+    this.auth.logout()
+    // logout without stopping doesn't make sense - you can't do anything with playfab while logged out.
+    this.stop()
+  }
+  rememberLogin(customId) {
+    this.auth.pushAuth(customId)
   }
   stop() {
     window.clearInterval(this._loginRefresher)
