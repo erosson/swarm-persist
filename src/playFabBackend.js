@@ -142,12 +142,11 @@ export class PlayFabBackend {
   push(state) {
     // localstorage is synchronous and doesn't really need promises, but other backends need them
     return new Promise((resolve, reject) => {
-      PlayFabClientSDK.UpdateUserData({Data: {state}}, (res, error) => {
+      PlayFabClientSDK.UpdateUserData({Data: {state: JSON.stringify(state)}}, (res, error) => {
         if (error) {
           reject(error)
         }
         else {
-          console.log('push', res)
           resolve({state, res})
         }
       })
