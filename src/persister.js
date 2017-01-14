@@ -8,6 +8,7 @@ const defaultConfig = {
   Scheduler,
   backend: new LocalStorageBackend(),
   onFetch: function(){},
+  onPull: function(){},
   onPush: function(){},
   onClear: function(){},
   // getState: required
@@ -66,7 +67,11 @@ export class Persister {
   }
   pull() {
     const promise = this.config.backend.fetch()
-    promise.then(fetched => this._pull(fetched))
+    promise.then(fetched => {
+      this._pull(fetched)
+      return fetched
+    })
+    this.config.onPull(promise)
     return promise
   }
   push() {
