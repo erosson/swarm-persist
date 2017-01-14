@@ -1,12 +1,12 @@
 import encoder from './encoder'
-import localStorageBackend from './localStorageBackend'
+import {LocalStorageBackend} from './localStorageBackend'
 import {Scheduler} from './scheduler'
 import {assert} from './assert'
 
 const defaultConfig = {
   encoder,
   Scheduler,
-  backend: localStorageBackend,
+  backend: new LocalStorageBackend(),
   onFetch: function(){},
   onPush: function(){},
   onClear: function(){},
@@ -81,10 +81,19 @@ export class Persister {
     this.config.onPush(ret)
     return ret
   }
-  clear() {
+  clearRemote() {
     const ret = this.config.backend.clear()
     this.config.onClear(ret)
     return ret
+  }
+  clear() {
+    // clear both pushes (backend.clear()) and pulls (setState(initState)).
+    // Note that there's no need to wait for the push to finish before
+    // clearing the local state - worst case is that the clear fails; either it
+    // gets overwritten in a later push anyway, or the player pushes nothing
+    // and comes back later to their old save, no biggie.
+    this.config.setState(this.config.initState())
+    return this.clearRemote()
   }
   export() {
     return this.config.encoder.encode(this.config.getState())
