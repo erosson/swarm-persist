@@ -6737,8 +6737,6 @@ return /******/ (function(modules) { // webpackBootstrap
 	
 	var _localStorageBackend = __webpack_require__(134);
 	
-	var _localStorageBackend2 = _interopRequireDefault(_localStorageBackend);
-	
 	var _scheduler = __webpack_require__(143);
 	
 	var _assert = __webpack_require__(145);
@@ -6750,8 +6748,9 @@ return /******/ (function(modules) { // webpackBootstrap
 	var defaultConfig = {
 	  encoder: _encoder2.default,
 	  Scheduler: _scheduler.Scheduler,
-	  backend: _localStorageBackend2.default,
+	  backend: new _localStorageBackend.LocalStorageBackend(),
 	  onFetch: function onFetch() {},
+	  onPull: function onPull() {},
 	  onPush: function onPush() {},
 	  onClear: function onClear() {},
 	  // getState: required
@@ -6832,8 +6831,10 @@ return /******/ (function(modules) { // webpackBootstrap
 	
 	      var promise = this.config.backend.fetch();
 	      promise.then(function (fetched) {
-	        return _this2._pull(fetched);
+	        _this2._pull(fetched);
+	        return fetched;
 	      });
+	      this.config.onPull(promise);
 	      return promise;
 	    }
 	  }, {
@@ -6854,11 +6855,22 @@ return /******/ (function(modules) { // webpackBootstrap
 	      return ret;
 	    }
 	  }, {
-	    key: 'clear',
-	    value: function clear() {
+	    key: 'clearRemote',
+	    value: function clearRemote() {
 	      var ret = this.config.backend.clear();
 	      this.config.onClear(ret);
 	      return ret;
+	    }
+	  }, {
+	    key: 'clear',
+	    value: function clear() {
+	      // clear both pushes (backend.clear()) and pulls (setState(initState)).
+	      // Note that there's no need to wait for the push to finish before
+	      // clearing the local state - worst case is that the clear fails; either it
+	      // gets overwritten in a later push anyway, or the player pushes nothing
+	      // and comes back later to their old save, no biggie.
+	      this.config.setState(this.config.initState());
+	      return this.clearRemote();
 	    }
 	  }, {
 	    key: 'export',
