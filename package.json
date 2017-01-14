@@ -39,6 +39,7 @@
     "chai": "3.5.0",
     "del": "2.2.2",
     "esdoc": "0.5.2",
+    "gh-pages-deploy": "0.4.2",
     "glob": "7.0.6",
     "gulp": "3.9.1",
     "gulp-eslint": "3.0.1",
