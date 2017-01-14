@@ -44,7 +44,100 @@
 </div>
 </nav>
 
-<div class="content" data-ice="content"><div data-ice="index" class="github-markdown"><p>hello</p>
+<div class="content" data-ice="content"><div data-ice="index" class="github-markdown"><h1 id="swarm-persist">swarm-persist</h1>
+<p>Periodically save game state/JSON data to one of several backends. Supports online saves with guest users/no-signin. Designed for incremental games like <a href="https://swarmsim.github.io">Swarm Simulator</a>.</p>
+<p><a href="https://travis-ci.org/erosson/swarm-persist"><img src="http://img.shields.io/travis/erosson/swarm-persist.svg?style=flat" alt="Travis build status"></a>
+<a href="https://codeclimate.com/github/erosson/swarm-persist"><img src="https://codeclimate.com/github/erosson/swarm-persist/badges/gpa.svg" alt="Code Climate"></a>
+<a href="https://codeclimate.com/github/erosson/swarm-persist"><img src="https://codeclimate.com/github/erosson/swarm-persist/badges/coverage.svg" alt="Test Coverage"></a>
+<a href="https://david-dm.org/erosson/swarm-persist"><img src="https://david-dm.org/erosson/swarm-persist.svg" alt="Dependency Status"></a>
+<a href="https://david-dm.org/erosson/swarm-persist#info=devDependencies"><img src="https://david-dm.org/erosson/swarm-persist/dev-status.svg" alt="devDependency Status"></a></p>
+<h2 id="usage">Usage</h2>
+<h3 id="automatic-save-load">Automatic save/load</h3>
+<p>You provide functions that initialize, get, and set the state of your game. The state must be a pure JSON object - no functions, Dates, or other classes; nothing that <code>JSON.stringify()</code> would miss.</p>
+<pre><code><code class="source-code prettyprint">window.gameState = {loading: true};
+function initState() {
+  return {count: 0};
+}
+function getState() {
+  return window.gameState;
+}
+function setState(state) {
+  window.gameState = state;
+}
+var persister = persist.start({initState: initState, getState: getState, setState: setState});</code>
+</code></pre><p>Swarm-persist will now handle saving and loading your game in <code>localStorage</code>:</p>
+<ul>
+<li>Save the player&apos;s game every 5 minutes (configurable)</li>
+<li>Try to save the player&apos;s game when the window is closed</li>
+<li>Load the player&apos;s saved game when the page is reloaded - that is, just after <code>persist.init()</code> runs</li>
+</ul>
+<p>Wait a few minutes (or call <code>persister.save()</code> by hand), then check that it&apos;s working:</p>
+<pre><code><code class="source-code prettyprint">persister.key
+// =&gt; &quot;swarm-persist-state&quot;
+!!window.localStorage.get(persister.key)
+// =&gt; true
+persister.lastUpdated().toString()
+// =&gt; &quot;Sun Jan 08 2017 18:53:37 GMT-0800&quot;
+persister.lastUpdated().fromNow()
+// =&gt; &quot;a few seconds ago&quot;</code>
+</code></pre><p>Import/export a saved game as a string:</p>
+<pre><code><code class="source-code prettyprint">var exported = persister.export()
+// =&gt; &quot;eyJjb3VudCI6MX0=&quot;
+persister.import(exported)</code>
+</code></pre><h3 id="playfab-and-online-saves">PlayFab and online saves</h3>
+<p>Instead of <code>localStorage</code>, you can use PlayFab as a free backend for online saves/cloud saves. Sign up on <a href="https://playfab.com/">playfab.com</a> and get a title id:</p>
+<pre><code><code class="source-code prettyprint">&lt;script src=&quot;//download.playfab.com/PlayFabClientApi.js&quot;&gt;&lt;/script&gt;
+
+var playfab = persist.PlayFabBackend({titleId: &apos;5h1t&apos;})   // replace with your titleid
+var persister = persist.init({initState: initState, getState: getState, setState: setState, backend: playfab})</code>
+</code></pre><p>Swarm-persist will automatically create guest accounts on PlayFab for users who haven&apos;t signed in yet:</p>
+<pre><code><code class="source-code prettyprint">!!playfab.auth.playFabId
+// =&gt; true
+!!playfab.auth.customId
+// =&gt; true
+!!playfab.auth.email
+// =&gt; false</code>
+</code></pre><p>Guests are implemented using PlayFab&apos;s <a href="https://api.playfab.com/Documentation/Client/method/LoginWithCustomID">custom id login</a>, and remembered across page loads using <code>localStorage</code>:</p>
+<pre><code><code class="source-code prettyprint">playfab.localStorageKey
+// =&gt; &quot;swarm-persist-playfab-credentials&quot;
+localStorage.getItem(playfab.localStorageKey)
+// =&gt; true</code>
+</code></pre><p>Upgrade guest accounts once a user signs in (you&apos;ll need to build your game&apos;s signup/login UI on your own):</p>
+<p>// TODO: rework this to support any of playfab&apos;s numerous login methods. swarm-persist needs to handle login (instead of raw playfab) to get customId for remember-me functionality, and fetching game state from playfab in the same login request.</p>
+<pre><code><code class="source-code prettyprint">var id = playfab.auth.playFabId
+playfab.emailSignup({email: &quot;swarm-persist-test@mailinator.com&quot;, password: &quot;testtest&quot;})
+playfab.emailLogin({email: &quot;swarm-persist-test@mailinator.com&quot;, password: &quot;testtest&quot;})
+!!playfab.auth.email
+// =&gt; true
+id === playfab.auth.playFabId
+// =&gt; true</code>
+</code></pre><p><a href="https://docs.kongregate.com/docs/javascript-api">Kongregate login</a> is also supported:</p>
+<pre><code><code class="source-code prettyprint">&lt;script src=&quot;//cdn1.kongregate.com/javascripts/kongregate_api.js&quot;&gt;&lt;/script&gt;
+
+kongregateAPI.loadAPI(function() {
+  var api = kongregateAPI.getAPI();
+  if (!api.services.isGuest()) {
+    playfab.kongregateLogin(api.services.getUserId(), api.services.getGameAuthToken())
+  }
+})</code>
+</code></pre><h2 id="getting-started">Getting started</h2>
+<pre><code><code class="source-code prettyprint">&lt;script src=&quot;//cdn.rawgit.com/erosson/swarm-persist/master/dist/swarm-persist.js&quot;&gt;&lt;/script&gt;</code>
+</code></pre><p>or</p>
+<pre><code><code class="source-code prettyprint">bower install --save swarm-persist</code>
+</code></pre><p>or</p>
+<pre><code><code class="source-code prettyprint">npm install --save swarm-persist
+
+const persist = require(&apos;swarm-persist&apos;)</code>
+</code></pre><p>TODO: full api docs</p>
+<h2 id="related-work">Related work</h2>
+<p>Based on Swarm Simulator&apos;s bignum:</p>
+<ul>
+<li><a href="https://github.com/swarmsim/swarm/blob/master/app/scripts/filters/bignum.coffee">https://github.com/swarmsim/swarm/blob/master/app/scripts/filters/bignum.coffee</a></li>
+<li><a href="https://github.com/swarmsim/swarm/blob/master/test/spec/filters/bignum.coffee">https://github.com/swarmsim/swarm/blob/master/test/spec/filters/bignum.coffee</a></li>
+</ul>
+<p>Project template: <a href="https://github.com/babel/generator-babel-boilerplate">https://github.com/babel/generator-babel-boilerplate</a></p>
+<h2 id="license">License</h2>
+<p>MIT - use this anywhere. I&apos;d like it if you open-sourced any changes you make to this library (send a pull request? Github fork?), but it&apos;s not required.</p>
 </div>
 </div>
 
