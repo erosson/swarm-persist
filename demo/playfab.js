@@ -76,7 +76,7 @@ function clear() {
     persister.stop();
     document.getElementById('toggleStart').innerText = 'resume'
   }
-  persister.clear().then(function() { persister.pull(); });
+  persister.clear()
 }
 function toggleStart() {
   if (persister.isStarted()) {
