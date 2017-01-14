@@ -2,8 +2,8 @@
 <html>
 <head>
   <meta charset="utf-8">
-  <base data-ice="baseUrl">
-  <title data-ice="title">API Document</title>
+  <base data-ice="baseUrl" href="../../">
+  <title data-ice="title">src/scheduler.js | API Document</title>
   <link type="text/css" rel="stylesheet" href="css/style.css">
   <link type="text/css" rel="stylesheet" href="css/prettify-tomorrow.css">
   <script src="script/prettify/prettify.js"></script>
@@ -44,8 +44,56 @@
 </div>
 </nav>
 
-<div class="content" data-ice="content"><div data-ice="index" class="github-markdown"><p>hello</p>
-</div>
+<div class="content" data-ice="content"><h1 data-ice="title">src/scheduler.js</h1>
+<pre class="source-code line-number raw-source-code"><code class="prettyprint linenums" data-ice="content">import $ from &apos;jquery&apos;
+import {assert} from &apos;./assert&apos;
+
+const defaultConfig = {
+  intervalMillis: 5 * 60 * 1000,
+  pushOnInterval: true,
+  pushOnClose: true,
+  // persister
+}
+
+export class Scheduler {
+  constructor(config) {
+    this.config = Object.assign({}, defaultConfig, config)
+    this._push = () =&gt; {
+      return this.config.persister.push()
+    }
+    this._lastPush = () =&gt; {
+      return this.config.persister._lastPush()
+    }
+  }
+  isStarted() {
+    return !!this.runner
+  }
+  start() {
+    assert(!this.isStarted(), &apos;persist scheduler already started&apos;)
+    this.runner = {}
+    
+    if (this.config.pushOnInterval) {
+      this.runner.interval = window.setInterval(this._push, this.config.intervalMillis)
+    }
+    if (this.config.pushOnClose) {
+      $(window).on(&apos;unload&apos;, this._lastPush)
+    }
+    assert(this.isStarted())
+  }
+  stop() {
+    assert(this.isStarted(), &apos;persist scheduler already stopped (or never started)&apos;)
+    if (this.config.pushOnInterval) {
+      window.clearInterval(this.runner.interval)
+    }
+    if (this.config.pushOnClose) {
+      $(window).off(&apos;unload&apos;, this._lastPush)
+    }
+    delete this.runner
+    assert(!this.isStarted())
+  }
+}
+</code></pre>
+
 </div>
 
 <footer class="footer">
