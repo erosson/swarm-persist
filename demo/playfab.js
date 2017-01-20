@@ -1,7 +1,9 @@
-// All the swarm-persist code needed to keep localstorage updated.
+// Playfab-specific configuration
+var playfab = new persist.PlayFabBackend({
+  titleId: '9F7C',
+})
+
 var persister = new persist.Persister({
-  // initState/getState/setState are the only required properties.
-  // They're identical to the localStorage version.
   initState: function() {
     return {count: 0};
   },
@@ -12,40 +14,8 @@ var persister = new persist.Persister({
     window.gameState = state;
     draw();
   },
-  // Playfab configuration.
-  backend: new persist.PlayFabBackend({
-    titleId: '9F7C',
-  }),
-  // How often we push to playfab.
   intervalMillis: 10 * 1000,
-  // onPush(), onFetch(), onClear() are optional, but allow for error handling
-  // and push status updates.
-  onPush: function(promise) {
-    console.log('push starting...')
-    promise.then(function(pushed) {
-      console.log('push success', pushed)
-      document.getElementById('lastPushed').innerText = new Date().toString();
-    }, function(error) {
-      console.error('push error', error)
-    });
-  },
-  onFetch: function(promise) {
-    console.log('fetch starting...')
-    promise.then(function(fetched) {
-      console.log('fetch success', fetched)
-    }, function(error) {
-      console.error('fetch error', error)
-    });
-  },
-  onClear: function(promise) {
-    console.log('clear starting...')
-    promise.then(function(pushed) {
-      console.log('clear success', pushed)
-      document.getElementById('lastPushed').innerText = new Date().toString();
-    }, function(error) {
-      console.error('clear error', error)
-    });
-  },
+  backend: playfab,
 });
 
 function onStart(res) {
@@ -55,8 +25,14 @@ function onStart(res) {
   if (res.user.CustomIdInfo) {
     document.getElementById('customId').innerText = res.user.CustomIdInfo.CustomId
   }
+  else {
+    document.getElementById('customId').innerText = 'no-custom-id'
+  }
   if (res.user.PrivateInfo && res.user.PrivateInfo.Email) {
     document.getElementById('email').innerText = res.user.PrivateInfo.Email
+  }
+  else {
+    document.getElementById('email').innerText = 'no-email'
   }
 }
 // Can't use persist.start() if we're waiting on start(). new Persister().start() returns the promise
@@ -93,6 +69,7 @@ function toggleStart() {
 function signup(form) {
   console.log(form.username.value, form.email.value, form.password.value, form.password2.value);
   // https://api.playfab.com/Documentation/Client/method/AddUsernamePassword
+  // no InfoRequestParameters here
   PlayFabClientSDK.AddUsernamePassword({
     Username: form.username.value,
     Email: form.email.value,
@@ -112,17 +89,21 @@ function login(form) {
     Email: form.email.value,
     Password: form.password.value,
     // this is important to remember the login next time
-    InfoRequestParameters: {GetUserAccountInfo: true},
+    //InfoRequestParameters: {GetUserAccountInfo: true},
   }, (res, error) => {
     if (error) {
       console.error(error)
     }
     else {
       document.getElementById('playFabId').innerText = res.data.PlayFabId
-      document.getElementById('customId').innerText = res.data.InfoResultPayload.AccountInfo.CustomIdInfo.CustomId
       document.getElementById('email').innerText = form.email.value
       // remember this login for next time
-      persister.config.backend.rememberLogin(res.data.InfoResultPayload.AccountInfo.CustomIdInfo.CustomId)
+      //playfab.rememberLogin(res.data.InfoResultPayload.AccountInfo.CustomIdInfo.CustomId)
+      // simpler way, but it takes a second request
+      playfab.pullRememberId().then(function(res, error) {
+        document.getElementById('customId').innerText = res
+      })
+      persister.pull()
     }
   })
 }

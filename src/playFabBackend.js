@@ -22,7 +22,7 @@ class PlayFabBackendAuth {
     this.key = key
     this.titleId = titleId
   }
-  login(customId=this.fetchAuth()) {
+  login(customId=this.auth.getRememberId()) {
     return new Promise((resolve, reject) => {
       PlayFabClientSDK.LoginWithCustomID({
         TitleId: this.titleId,
@@ -74,7 +74,7 @@ class PlayFabBackendAuth {
       if (res.data.NewlyCreated) {
         // we guessed an unused id. Yay! This is the common case.
         console.debug('created account with new id. iter '+iter)
-        this.pushAuth(customId)
+        this.setRememberId(customId)
         this.user = res
         return resolve(res)
       }
@@ -83,19 +83,19 @@ class PlayFabBackendAuth {
       return this._createAndRemember(iter + 1, resolve, reject)
     })
   }
-  fetchAuth() {
+  getRememberId() {
     const encoded = this.localStorage.getItem(this.key)
     return encoded ? JSON.parse(encoded).customId : null
   }
-  pushAuth(customId) {
+  setRememberId(customId) {
     this.localStorage.setItem(this.key, JSON.stringify({customId}))
   }
-  clearAuth() {
+  clearRememberId() {
     this.localStorage.removeItem(this.key)
   }
   logout() {
     // Remove the custom id cookie, so we won't be logged in as this user upon page reload.
-    this.clearAuth()
+    this.clearRememberId()
     // Remove playfab's login data. There's no official method, but there's source code!
     // https://github.com/PlayFab/JavaScriptSDK/blob/master/PlayFabSDK/PlayFabClientApi.js
     PlayFab._internalSettings.sessionTicket = null
@@ -104,7 +104,7 @@ class PlayFabBackendAuth {
     }
   }
   loginOrCreate() {
-    const customId = this.fetchAuth()
+    const customId = this.getRememberId()
     if (customId) {
       return this.login(customId)
     }
@@ -156,8 +156,30 @@ export class PlayFabBackend {
     // logout without stopping doesn't make sense - you can't do anything with playfab while logged out.
     this.stop()
   }
-  rememberLogin(customId) {
-    this.auth.pushAuth(customId)
+  getRememberId() {
+    this.auth.getRememberId()
+  }
+  setRememberId(customId) {
+    this.auth.setRememberId(customId)
+  }
+  setRememberIdFromResponse(res) {
+    const ret = res.data.InfoResultPayload.AccountInfo.CustomIdInfo.CustomId
+    this.auth.setRememberId(ret)
+    return ret
+  }
+  pullRememberId() {
+    return new Promise((resolve, reject) => {
+      PlayFabClientSDK.GetPlayerCombinedInfo({
+        InfoRequestParameters: {GetUserAccountInfo: true},
+      }, (res, error) => {
+        if (error) {
+          reject(error)
+        }
+        else {
+          resolve(this.setRememberIdFromResponse(res))
+        }
+      })
+    })
   }
   stop() {
     window.clearInterval(this._loginRefresher)
@@ -226,7 +248,7 @@ export class PlayFabBackend {
           reject(error)
         }
         else {
-          resolve({state, res})
+          resolve({res})
         }
       })
     })
