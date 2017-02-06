@@ -612,6 +612,12 @@ window.esdocSearchIndex = [
     "method"
   ],
   [
+    "src/playfabbackend.js~playfabbackend#getrememberid",
+    "class/src/playFabBackend.js~PlayFabBackend.html#instance-method-getRememberId",
+    "src/playFabBackend.js~PlayFabBackend#getRememberId",
+    "method"
+  ],
+  [
     "src/playfabbackend.js~playfabbackend#lastpush",
     "class/src/playFabBackend.js~PlayFabBackend.html#instance-method-lastPush",
     "src/playFabBackend.js~PlayFabBackend#lastPush",
@@ -624,15 +630,27 @@ window.esdocSearchIndex = [
     "method"
   ],
   [
+    "src/playfabbackend.js~playfabbackend#pullrememberid",
+    "class/src/playFabBackend.js~PlayFabBackend.html#instance-method-pullRememberId",
+    "src/playFabBackend.js~PlayFabBackend#pullRememberId",
+    "method"
+  ],
+  [
     "src/playfabbackend.js~playfabbackend#push",
     "class/src/playFabBackend.js~PlayFabBackend.html#instance-method-push",
     "src/playFabBackend.js~PlayFabBackend#push",
     "method"
   ],
   [
-    "src/playfabbackend.js~playfabbackend#rememberlogin",
-    "class/src/playFabBackend.js~PlayFabBackend.html#instance-method-rememberLogin",
-    "src/playFabBackend.js~PlayFabBackend#rememberLogin",
+    "src/playfabbackend.js~playfabbackend#setrememberid",
+    "class/src/playFabBackend.js~PlayFabBackend.html#instance-method-setRememberId",
+    "src/playFabBackend.js~PlayFabBackend#setRememberId",
+    "method"
+  ],
+  [
+    "src/playfabbackend.js~playfabbackend#setrememberidfromresponse",
+    "class/src/playFabBackend.js~PlayFabBackend.html#instance-method-setRememberIdFromResponse",
+    "src/playFabBackend.js~PlayFabBackend#setRememberIdFromResponse",
     "method"
   ],
   [

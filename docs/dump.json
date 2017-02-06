@@ -718,7 +718,7 @@
     "__docId__": 27,
     "kind": "file",
     "name": "src/persister.js",
-    "content": "import encoder from './encoder'\nimport {LocalStorageBackend} from './localStorageBackend'\nimport {Scheduler} from './scheduler'\nimport {assert} from './assert'\n\nconst defaultConfig = {\n  encoder,\n  Scheduler,\n  backend: new LocalStorageBackend(),\n  onFetch: function(){},\n  onPull: function(){},\n  onPush: function(){},\n  onClear: function(){},\n  // getState: required\n  // setState: required\n\n  // initState is documented as required, but it's actually not. setState with\n  // a default is acceptable instead, because that's a nicer way to do things\n  // when there's es6 support. It matches redux too. Example:\n  // function setState(state={count: 0}) { ... }\n  initState: function(){},\n}\n\nexport class Persister {\n  constructor(config) {\n    this.config = Object.assign({}, defaultConfig, config)\n    this.scheduler = new this.config.Scheduler(Object.assign({}, config, {persister: this}))\n  }\n\n  isStarted() { return this.scheduler.isStarted() }\n  stop() {\n    this.scheduler.stop()\n    if (this.config.backend.stop) {\n      return this.config.backend.stop()\n    }\n  }\n  start() {\n    const afterPull = fetched => {\n      this.scheduler.start()\n      return fetched\n    }\n    if (this.config.backend.start) {\n      // start() is expected to fetch, to support fetch-and-login in one request.\n      return this.config.backend.start().then(fetched => {\n        this._pull(fetched)\n        return afterPull(fetched)\n      })\n    }\n    else {\n      return this.pull().then(afterPull)\n    }\n  }\n\n  fetch() {\n    const promise = this.config.backend.fetch()\n    this.config.onFetch(promise)\n    return promise\n  }\n  _pull({state, empty}) {\n    assert(empty || (state !== undefined), 'a persister fetch returned an undefined but nonempty state')\n    if (empty) {\n      // we're looking at a new player - reset their state\n      state = this.config.initState()\n    }\n    this.config.setState(state)\n    assert(this.config.getState() !== undefined, 'persister.initState() is required')\n  }\n  pull() {\n    const promise = this.config.backend.fetch()\n    promise.then(fetched => {\n      this._pull(fetched)\n      return fetched\n    })\n    this.config.onPull(promise)\n    return promise\n  }\n  push() {\n    const ret = this.config.backend.push(this.config.getState())\n    this.config.onPush(ret)\n    return ret\n  }\n  // some backends handle the last push, during page unload, differently\n  _lastPush() {\n    const pushFn = this.config.backend.lastPush || this.config.backend.push\n    const ret = pushFn.call(this.config.backend, this.config.getState())\n    this.config.onPush(ret)\n    return ret\n  }\n  clearRemote() {\n    const ret = this.config.backend.clear()\n    this.config.onClear(ret)\n    return ret\n  }\n  clear() {\n    // clear both pushes (backend.clear()) and pulls (setState(initState)).\n    // Note that there's no need to wait for the push to finish before\n    // clearing the local state - worst case is that the clear fails; either it\n    // gets overwritten in a later push anyway, or the player pushes nothing\n    // and comes back later to their old save, no biggie.\n    this.config.setState(this.config.initState())\n    return this.clearRemote()\n  }\n  export() {\n    return this.config.encoder.encode(this.config.getState())\n  }\n  import(encoded) {\n    this.config.setState(this.config.encoder.decode(encoded))\n  }\n}\n\nexport function start(config) {\n  const ret = new Persister(config)\n  ret.start()\n  return ret\n}\n",
+    "content": "import encoder from './encoder'\nimport {LocalStorageBackend} from './localStorageBackend'\nimport {Scheduler} from './scheduler'\nimport {assert} from './assert'\n\nconst defaultConfig = {\n  encoder,\n  Scheduler,\n  backend: new LocalStorageBackend(),\n  onFetch: function(){},\n  onPull: function(){},\n  onPush: function(){},\n  onClear: function(){},\n  // getState: required\n  // setState: required\n\n  // initState is documented as required, but it's actually not. setState with\n  // a default is acceptable instead, because that's a nicer way to do things\n  // when there's es6 support. It matches redux too. Example:\n  // function setState(state={count: 0}) { ... }\n  initState: function(){},\n}\n\nexport class Persister {\n  constructor(config) {\n    this.config = Object.assign({}, defaultConfig, config)\n    this.scheduler = new this.config.Scheduler(Object.assign({}, this.config, {persister: this}))\n  }\n\n  isStarted() { return this.scheduler.isStarted() }\n  stop() {\n    this.scheduler.stop()\n    if (this.config.backend.stop) {\n      return this.config.backend.stop()\n    }\n  }\n  start() {\n    const afterPull = fetched => {\n      this.scheduler.start()\n      return fetched\n    }\n    if (this.config.backend.start) {\n      // start() is expected to fetch, to support fetch-and-login in one request.\n      return this.config.backend.start().then(fetched => {\n        this._pull(fetched)\n        return afterPull(fetched)\n      })\n    }\n    else {\n      return this.pull().then(afterPull)\n    }\n  }\n\n  fetch() {\n    const promise = this.config.backend.fetch()\n    this.config.onFetch(promise)\n    return promise\n  }\n  _pull({state, empty}) {\n    assert(empty || (state !== undefined), 'a persister fetch returned an undefined but nonempty state')\n    if (empty) {\n      // we're looking at a new player - reset their state\n      state = this.config.initState()\n    }\n    this.config.setState(state)\n    assert(this.config.getState() !== undefined, 'persister.initState() is required')\n  }\n  pull() {\n    const promise = this.config.backend.fetch()\n    promise.then(fetched => {\n      this._pull(fetched)\n      return fetched\n    })\n    this.config.onPull(promise)\n    return promise\n  }\n  push() {\n    const ret = this.config.backend.push(this.config.getState())\n    this.config.onPush(ret)\n    return ret\n  }\n  // some backends handle the last push, during page unload, differently\n  _lastPush() {\n    const pushFn = this.config.backend.lastPush || this.config.backend.push\n    const ret = pushFn.call(this.config.backend, this.config.getState())\n    this.config.onPush(ret)\n    return ret\n  }\n  clearRemote() {\n    const ret = this.config.backend.clear()\n    this.config.onClear(ret)\n    return ret\n  }\n  clear() {\n    // clear both pushes (backend.clear()) and pulls (setState(initState)).\n    // Note that there's no need to wait for the push to finish before\n    // clearing the local state - worst case is that the clear fails; either it\n    // gets overwritten in a later push anyway, or the player pushes nothing\n    // and comes back later to their old save, no biggie.\n    this.config.setState(this.config.initState())\n    return this.clearRemote()\n  }\n  export() {\n    return this.config.encoder.encode(this.config.getState())\n  }\n  import(encoded) {\n    this.config.setState(this.config.encoder.decode(encoded))\n  }\n}\n\nexport function start(config) {\n  const ret = new Persister(config)\n  ret.start()\n  return ret\n}\n",
     "static": true,
     "longname": "src/persister.js",
     "access": null,
@@ -1208,7 +1208,7 @@
     "__docId__": 46,
     "kind": "file",
     "name": "src/playFabBackend.js",
-    "content": "import {PlayFab, PlayFabClientSDK} from 'playfab-sdk-browser'\nimport uuid from 'uuid'\n\nif (global.window) {\n  // expose playfab apis to user code, for login/signup\n  window.PlayFabClientSDK = PlayFabClientSDK\n  window.PlayFab = PlayFab\n}\n\nconst defaultConfig = {\n  localStorageKey: 'swarm-persist-playfab-state',\n  localStorage: global.window && window.localStorage,\n  stateKey: 'state',\n  // try to refresh the login every 4 hours. Way more often than needed for a\n  // 24 hour expiry, but it doesn't hurt.\n  loginRefreshMillis: 4 * 60 * 60 * 1000,\n}\n\nclass PlayFabBackendAuth {\n  constructor(localStorage, key, titleId) {\n    this.localStorage = localStorage\n    this.key = key\n    this.titleId = titleId\n  }\n  login(customId=this.fetchAuth()) {\n    return new Promise((resolve, reject) => {\n      PlayFabClientSDK.LoginWithCustomID({\n        TitleId: this.titleId,\n        CustomId: customId,\n        CreateAccount: false,\n        InfoRequestParameters: {\n          GetUserData: true,\n          GetUserAccountInfo: true,\n        },\n      }, (res, error) => {\n        if (error) {\n          return reject(error)\n        }\n        this.user = res\n        //console.log('playfab login success')\n        return resolve(res)\n      })\n    })\n  }\n  createAndRemember() {\n    return new Promise((resolve, reject) => {\n      this._createAndRemember(0, resolve, reject)\n    })\n  }\n  _createAndRemember(iter=0, resolve, reject) {\n    // no credentials. Create a new account.\n    // We generate ids client-side. These act like userid+password; only need the\n    // id to log in. But, since they're generated client-side, there's a remote\n    // chance of duplicates. If we hit a duplicate, try again.\n    // Hitting a dupe is actually pretty bad - someone evil could steal that\n    // account. It's statistically unlikely to do that, though; ideally, we'll\n    // never actually run this loop more than once.\n    if (iter >= 10) {\n      return reject('Failed to create new account')\n    }\n    let customId = uuid.v4()\n    PlayFabClientSDK.LoginWithCustomID({\n      TitleId: this.titleId,\n      CustomId: customId,\n      CreateAccount: true,\n      InfoRequestParameters: {\n        GetUserData: true,\n        GetUserAccountInfo: true,\n      },\n    }, (res, error) => {\n      if (error) {\n        return reject(error)\n      }\n      if (res.data.NewlyCreated) {\n        // we guessed an unused id. Yay! This is the common case.\n        console.debug('created account with new id. iter '+iter)\n        this.pushAuth(customId)\n        this.user = res\n        return resolve(res)\n      }\n      // we guessed a used id, try again. This should be uncommon.\n      console.warn('tried creating new account with occupied id. Trying again: '+iter)\n      return this._createAndRemember(iter + 1, resolve, reject)\n    })\n  }\n  fetchAuth() {\n    const encoded = this.localStorage.getItem(this.key)\n    return encoded ? JSON.parse(encoded).customId : null\n  }\n  pushAuth(customId) {\n    this.localStorage.setItem(this.key, JSON.stringify({customId}))\n  }\n  clearAuth() {\n    this.localStorage.removeItem(this.key)\n  }\n  logout() {\n    // Remove the custom id cookie, so we won't be logged in as this user upon page reload.\n    this.clearAuth()\n    // Remove playfab's login data. There's no official method, but there's source code!\n    // https://github.com/PlayFab/JavaScriptSDK/blob/master/PlayFabSDK/PlayFabClientApi.js\n    PlayFab._internalSettings.sessionTicket = null\n    if (PlayFabClientSDK.IsClientLoggedIn()) {\n      console.error(\"couldn't log out from playfab\")\n    }\n  }\n  loginOrCreate() {\n    const customId = this.fetchAuth()\n    if (customId) {\n      return this.login(customId)\n    }\n    else {\n      return this.createAndRemember()\n    }\n  }\n}\n\nexport class PlayFabBackend {\n  constructor(config) {\n    this.config = Object.assign({}, defaultConfig, config)\n    // it's too bad playfab forces this to be global\n    PlayFab.settings.titleId = this.config.titleId\n    this.auth = new PlayFabBackendAuth(this.config.localStorage, this.config.localStorageKey, this.config.titleId)\n  }\n  _parseFetchUserData(userdata={}) {\n    // TODO chunking\n    const container = userdata[this.config.stateKey]\n    if (!container) {\n      return {empty: true}\n    }\n    return {\n      [this.config.stateKey]: JSON.parse(container.Value),\n      lastUpdated: new Date(container.LastUpdated).getTime(),\n    }\n  }\n  // https://api.playfab.com/Documentation/Client/method/LoginWithCustomID\n  start() {\n    // Login sessions expire after 24 hours:\n    // https://community.playfab.com/idea/224/205582298-Session-ticket-expiry-Timestamp-.html\n    //\n    // Re-login to refresh the session periodically. CustomId logins are\n    // invisible to the user, so there's no real cost.\n    const relog = () => this.auth.login()\n    this._loginRefresher = window.setInterval(relog, this.config.loginRefreshMillis)\n    // login and fetch in one step\n    return new Promise((resolve, reject) => {\n      this.auth.loginOrCreate().then(res => {\n        // login returns fetch data plus user account data\n        let ret = this._parseFetchUserData(res.data.InfoResultPayload.UserData)\n        ret.user = res.data.InfoResultPayload.AccountInfo\n        resolve(ret)\n      }, error => reject(error))\n    })\n  }\n  logoutAndStop() {\n    this.auth.logout()\n    // logout without stopping doesn't make sense - you can't do anything with playfab while logged out.\n    this.stop()\n  }\n  rememberLogin(customId) {\n    this.auth.pushAuth(customId)\n  }\n  stop() {\n    window.clearInterval(this._loginRefresher)\n  }\n  // https://api.playfab.com/Documentation/Client/method/GetUserData\n  fetch() {\n    return new Promise((resolve, reject) => {\n      PlayFabClientSDK.GetUserData({}, (res, error) => {\n        if (error) {\n          reject(error)\n        }\n        else {\n          resolve(this._parseFetchUserData(res.data.Data))\n        }\n      })\n    })\n  }\n  lastPush(state) {\n    // Send the last push synchronously. Pushing during page unload is tricky -\n    // async XHRs fail in unload handlers, so normally, save-on-close doesn't.\n    // Synchronous requests block the UI for a moment, but usually succeed.\n    // UI blocking is awful, but saving the game on close is just that important.\n    // \n    // PlayFab's API is pretty uncooperative here. We can't officially configure\n    // its calls to be synchronous, but we can monkeypatch XMLHTTPRequest.\n    // We're manipulating the XMLHttpRequest.open in this file, ExecuteRequest():\n    // https://github.com/PlayFab/JavaScriptSDK/blob/master/PlayFabSDK/PlayFabClientApi.js\n    //\n    // sendBeacon() would be better - no UI block. It's much harder to patch in to\n    // PlayFab's API though, and browser support is less common. Maybe later, but \n    // this is a fine start.\n    // https://developer.mozilla.org/en-US/docs/Web/API/Navigator/sendBeacon\n    const fn = window.XMLHttpRequest.prototype.open\n    window.XMLHttpRequest.prototype.open = function(method, url, async) {\n      console.log('hijacked xmlhttprequest.open, sync calls only')\n      return fn.call(this, method, url, false)\n    }\n    // clean up after myself, both for success and error.\n    // Maybe not necessary since the page is closing, but it's a good habit.\n    const cleanup = res => {\n      window.XMLHttpRequest.prototype.open = fn\n      console.log('un-hijacked xmlhttprequest.open, async allowed again')\n      return res\n    }\n    return this.push(state).then(cleanup, cleanup)\n  }\n  // https://api.playfab.com/Documentation/Client/method/UpdateUserData\n  push(state) {\n    // localstorage is synchronous and doesn't really need promises, but other backends need them\n    return new Promise((resolve, reject) => {\n      PlayFabClientSDK.UpdateUserData({Data: {[this.config.stateKey]: JSON.stringify(state)}}, (res, error) => {\n        if (error) {\n          reject(error)\n        }\n        else {\n          resolve({state, res})\n        }\n      })\n    })\n  }\n  // https://api.playfab.com/Documentation/Client/method/UpdateUserData\n  clear() {\n    return new Promise((resolve, reject) => {\n      PlayFabClientSDK.UpdateUserData({KeysToRemove: [this.config.stateKey]}, (res, error) => {\n        if (error) {\n          reject(error)\n        }\n        else {\n          resolve({state, res})\n        }\n      })\n    })\n  }\n}\n",
+    "content": "import {PlayFab, PlayFabClientSDK} from 'playfab-sdk-browser'\nimport uuid from 'uuid'\n\nif (global.window) {\n  // expose playfab apis to user code, for login/signup\n  window.PlayFabClientSDK = PlayFabClientSDK\n  window.PlayFab = PlayFab\n}\n\nconst defaultConfig = {\n  localStorageKey: 'swarm-persist-playfab-state',\n  localStorage: global.window && window.localStorage,\n  stateKey: 'state',\n  // try to refresh the login every 4 hours. Way more often than needed for a\n  // 24 hour expiry, but it doesn't hurt.\n  loginRefreshMillis: 4 * 60 * 60 * 1000,\n}\n\nclass PlayFabBackendAuth {\n  constructor(localStorage, key, titleId) {\n    this.localStorage = localStorage\n    this.key = key\n    this.titleId = titleId\n  }\n  login(customId=this.auth.getRememberId()) {\n    return new Promise((resolve, reject) => {\n      PlayFabClientSDK.LoginWithCustomID({\n        TitleId: this.titleId,\n        CustomId: customId,\n        CreateAccount: false,\n        InfoRequestParameters: {\n          GetUserData: true,\n          GetUserAccountInfo: true,\n        },\n      }, (res, error) => {\n        if (error) {\n          return reject(error)\n        }\n        this.user = res\n        //console.log('playfab login success')\n        return resolve(res)\n      })\n    })\n  }\n  createAndRemember() {\n    return new Promise((resolve, reject) => {\n      this._createAndRemember(0, resolve, reject)\n    })\n  }\n  _createAndRemember(iter=0, resolve, reject) {\n    // no credentials. Create a new account.\n    // We generate ids client-side. These act like userid+password; only need the\n    // id to log in. But, since they're generated client-side, there's a remote\n    // chance of duplicates. If we hit a duplicate, try again.\n    // Hitting a dupe is actually pretty bad - someone evil could steal that\n    // account. It's statistically unlikely to do that, though; ideally, we'll\n    // never actually run this loop more than once.\n    if (iter >= 10) {\n      return reject('Failed to create new account')\n    }\n    let customId = uuid.v4()\n    PlayFabClientSDK.LoginWithCustomID({\n      TitleId: this.titleId,\n      CustomId: customId,\n      CreateAccount: true,\n      InfoRequestParameters: {\n        GetUserData: true,\n        GetUserAccountInfo: true,\n      },\n    }, (res, error) => {\n      if (error) {\n        return reject(error)\n      }\n      if (res.data.NewlyCreated) {\n        // we guessed an unused id. Yay! This is the common case.\n        console.debug('created account with new id. iter '+iter)\n        this.setRememberId(customId)\n        this.user = res\n        return resolve(res)\n      }\n      // we guessed a used id, try again. This should be uncommon.\n      console.warn('tried creating new account with occupied id. Trying again: '+iter)\n      return this._createAndRemember(iter + 1, resolve, reject)\n    })\n  }\n  getRememberId() {\n    const encoded = this.localStorage.getItem(this.key)\n    return encoded ? JSON.parse(encoded).customId : null\n  }\n  setRememberId(customId) {\n    this.localStorage.setItem(this.key, JSON.stringify({customId}))\n  }\n  clearRememberId() {\n    this.localStorage.removeItem(this.key)\n  }\n  logout() {\n    // Remove the custom id cookie, so we won't be logged in as this user upon page reload.\n    this.clearRememberId()\n    // Remove playfab's login data. There's no official method, but there's source code!\n    // https://github.com/PlayFab/JavaScriptSDK/blob/master/PlayFabSDK/PlayFabClientApi.js\n    PlayFab._internalSettings.sessionTicket = null\n    if (PlayFabClientSDK.IsClientLoggedIn()) {\n      console.error(\"couldn't log out from playfab\")\n    }\n  }\n  loginOrCreate() {\n    const customId = this.getRememberId()\n    if (customId) {\n      return this.login(customId)\n    }\n    else {\n      return this.createAndRemember()\n    }\n  }\n}\n\nexport class PlayFabBackend {\n  constructor(config) {\n    this.config = Object.assign({}, defaultConfig, config)\n    // it's too bad playfab forces this to be global\n    PlayFab.settings.titleId = this.config.titleId\n    this.auth = new PlayFabBackendAuth(this.config.localStorage, this.config.localStorageKey, this.config.titleId)\n  }\n  _parseFetchUserData(userdata={}) {\n    // TODO chunking\n    const container = userdata[this.config.stateKey]\n    if (!container) {\n      return {empty: true}\n    }\n    return {\n      [this.config.stateKey]: JSON.parse(container.Value),\n      lastUpdated: new Date(container.LastUpdated).getTime(),\n    }\n  }\n  // https://api.playfab.com/Documentation/Client/method/LoginWithCustomID\n  start() {\n    // Login sessions expire after 24 hours:\n    // https://community.playfab.com/idea/224/205582298-Session-ticket-expiry-Timestamp-.html\n    //\n    // Re-login to refresh the session periodically. CustomId logins are\n    // invisible to the user, so there's no real cost.\n    const relog = () => this.auth.login()\n    this._loginRefresher = window.setInterval(relog, this.config.loginRefreshMillis)\n    // login and fetch in one step\n    return new Promise((resolve, reject) => {\n      this.auth.loginOrCreate().then(res => {\n        // login returns fetch data plus user account data\n        let ret = this._parseFetchUserData(res.data.InfoResultPayload.UserData)\n        ret.user = res.data.InfoResultPayload.AccountInfo\n        resolve(ret)\n      }, error => reject(error))\n    })\n  }\n  logoutAndStop() {\n    this.auth.logout()\n    // logout without stopping doesn't make sense - you can't do anything with playfab while logged out.\n    this.stop()\n  }\n  getRememberId() {\n    this.auth.getRememberId()\n  }\n  setRememberId(customId) {\n    this.auth.setRememberId(customId)\n  }\n  setRememberIdFromResponse(res) {\n    const ret = res.data.InfoResultPayload.AccountInfo.CustomIdInfo.CustomId\n    this.auth.setRememberId(ret)\n    return ret\n  }\n  pullRememberId() {\n    return new Promise((resolve, reject) => {\n      PlayFabClientSDK.GetPlayerCombinedInfo({\n        InfoRequestParameters: {GetUserAccountInfo: true},\n      }, (res, error) => {\n        if (error) {\n          reject(error)\n        }\n        else {\n          resolve(this.setRememberIdFromResponse(res))\n        }\n      })\n    })\n  }\n  stop() {\n    window.clearInterval(this._loginRefresher)\n  }\n  // https://api.playfab.com/Documentation/Client/method/GetUserData\n  fetch() {\n    return new Promise((resolve, reject) => {\n      PlayFabClientSDK.GetUserData({}, (res, error) => {\n        if (error) {\n          reject(error)\n        }\n        else {\n          resolve(this._parseFetchUserData(res.data.Data))\n        }\n      })\n    })\n  }\n  lastPush(state) {\n    // Send the last push synchronously. Pushing during page unload is tricky -\n    // async XHRs fail in unload handlers, so normally, save-on-close doesn't.\n    // Synchronous requests block the UI for a moment, but usually succeed.\n    // UI blocking is awful, but saving the game on close is just that important.\n    // \n    // PlayFab's API is pretty uncooperative here. We can't officially configure\n    // its calls to be synchronous, but we can monkeypatch XMLHTTPRequest.\n    // We're manipulating the XMLHttpRequest.open in this file, ExecuteRequest():\n    // https://github.com/PlayFab/JavaScriptSDK/blob/master/PlayFabSDK/PlayFabClientApi.js\n    //\n    // sendBeacon() would be better - no UI block. It's much harder to patch in to\n    // PlayFab's API though, and browser support is less common. Maybe later, but \n    // this is a fine start.\n    // https://developer.mozilla.org/en-US/docs/Web/API/Navigator/sendBeacon\n    const fn = window.XMLHttpRequest.prototype.open\n    window.XMLHttpRequest.prototype.open = function(method, url, async) {\n      console.log('hijacked xmlhttprequest.open, sync calls only')\n      return fn.call(this, method, url, false)\n    }\n    // clean up after myself, both for success and error.\n    // Maybe not necessary since the page is closing, but it's a good habit.\n    const cleanup = res => {\n      window.XMLHttpRequest.prototype.open = fn\n      console.log('un-hijacked xmlhttprequest.open, async allowed again')\n      return res\n    }\n    return this.push(state).then(cleanup, cleanup)\n  }\n  // https://api.playfab.com/Documentation/Client/method/UpdateUserData\n  push(state) {\n    // localstorage is synchronous and doesn't really need promises, but other backends need them\n    return new Promise((resolve, reject) => {\n      PlayFabClientSDK.UpdateUserData({Data: {[this.config.stateKey]: JSON.stringify(state)}}, (res, error) => {\n        if (error) {\n          reject(error)\n        }\n        else {\n          resolve({state, res})\n        }\n      })\n    })\n  }\n  // https://api.playfab.com/Documentation/Client/method/UpdateUserData\n  clear() {\n    return new Promise((resolve, reject) => {\n      PlayFabClientSDK.UpdateUserData({KeysToRemove: [this.config.stateKey]}, (res, error) => {\n        if (error) {\n          reject(error)\n        }\n        else {\n          resolve({res})\n        }\n      })\n    })\n  }\n}\n",
     "static": true,
     "longname": "src/playFabBackend.js",
     "access": null,
@@ -1529,12 +1529,12 @@
   {
     "__docId__": 58,
     "kind": "method",
-    "name": "fetchAuth",
+    "name": "getRememberId",
     "memberof": "src/playFabBackend.js~PlayFabBackendAuth",
     "generator": false,
     "async": false,
     "static": false,
-    "longname": "src/playFabBackend.js~PlayFabBackendAuth#fetchAuth",
+    "longname": "src/playFabBackend.js~PlayFabBackendAuth#getRememberId",
     "access": null,
     "description": null,
     "lineNumber": 86,
@@ -1555,12 +1555,12 @@
   {
     "__docId__": 59,
     "kind": "method",
-    "name": "pushAuth",
+    "name": "setRememberId",
     "memberof": "src/playFabBackend.js~PlayFabBackendAuth",
     "generator": false,
     "async": false,
     "static": false,
-    "longname": "src/playFabBackend.js~PlayFabBackendAuth#pushAuth",
+    "longname": "src/playFabBackend.js~PlayFabBackendAuth#setRememberId",
     "access": null,
     "description": null,
     "lineNumber": 90,
@@ -1583,12 +1583,12 @@
   {
     "__docId__": 60,
     "kind": "method",
-    "name": "clearAuth",
+    "name": "clearRememberId",
     "memberof": "src/playFabBackend.js~PlayFabBackendAuth",
     "generator": false,
     "async": false,
     "static": false,
-    "longname": "src/playFabBackend.js~PlayFabBackendAuth#clearAuth",
+    "longname": "src/playFabBackend.js~PlayFabBackendAuth#clearRememberId",
     "access": null,
     "description": null,
     "lineNumber": 93,
@@ -1853,15 +1853,36 @@
   {
     "__docId__": 71,
     "kind": "method",
-    "name": "rememberLogin",
+    "name": "getRememberId",
     "memberof": "src/playFabBackend.js~PlayFabBackend",
     "generator": false,
     "async": false,
     "static": false,
-    "longname": "src/playFabBackend.js~PlayFabBackend#rememberLogin",
+    "longname": "src/playFabBackend.js~PlayFabBackend#getRememberId",
     "access": null,
     "description": null,
     "lineNumber": 159,
+    "undocument": true,
+    "unknown": [
+      {
+        "tagName": "@_undocument",
+        "tagValue": ""
+      }
+    ],
+    "params": []
+  },
+  {
+    "__docId__": 72,
+    "kind": "method",
+    "name": "setRememberId",
+    "memberof": "src/playFabBackend.js~PlayFabBackend",
+    "generator": false,
+    "async": false,
+    "static": false,
+    "longname": "src/playFabBackend.js~PlayFabBackend#setRememberId",
+    "access": null,
+    "description": null,
+    "lineNumber": 162,
     "undocument": true,
     "unknown": [
       {
@@ -1879,17 +1900,17 @@
     ]
   },
   {
-    "__docId__": 72,
+    "__docId__": 73,
     "kind": "method",
-    "name": "stop",
+    "name": "setRememberIdFromResponse",
     "memberof": "src/playFabBackend.js~PlayFabBackend",
     "generator": false,
     "async": false,
     "static": false,
-    "longname": "src/playFabBackend.js~PlayFabBackend#stop",
+    "longname": "src/playFabBackend.js~PlayFabBackend#setRememberIdFromResponse",
     "access": null,
     "description": null,
-    "lineNumber": 162,
+    "lineNumber": 165,
     "undocument": true,
     "unknown": [
       {
@@ -1897,20 +1918,32 @@
         "tagValue": ""
       }
     ],
-    "params": []
+    "params": [
+      {
+        "name": "res",
+        "types": [
+          "*"
+        ]
+      }
+    ],
+    "return": {
+      "types": [
+        "*"
+      ]
+    }
   },
   {
-    "__docId__": 73,
+    "__docId__": 74,
     "kind": "method",
-    "name": "fetch",
+    "name": "pullRememberId",
     "memberof": "src/playFabBackend.js~PlayFabBackend",
     "generator": false,
     "async": false,
     "static": false,
-    "longname": "src/playFabBackend.js~PlayFabBackend#fetch",
+    "longname": "src/playFabBackend.js~PlayFabBackend#pullRememberId",
     "access": null,
     "description": null,
-    "lineNumber": 166,
+    "lineNumber": 170,
     "undocument": true,
     "unknown": [
       {
@@ -1926,50 +1959,17 @@
     }
   },
   {
-    "__docId__": 74,
-    "kind": "method",
-    "name": "lastPush",
-    "memberof": "src/playFabBackend.js~PlayFabBackend",
-    "generator": false,
-    "async": false,
-    "static": false,
-    "longname": "src/playFabBackend.js~PlayFabBackend#lastPush",
-    "access": null,
-    "description": null,
-    "lineNumber": 178,
-    "undocument": true,
-    "unknown": [
-      {
-        "tagName": "@_undocument",
-        "tagValue": ""
-      }
-    ],
-    "params": [
-      {
-        "name": "state",
-        "types": [
-          "*"
-        ]
-      }
-    ],
-    "return": {
-      "types": [
-        "*"
-      ]
-    }
-  },
-  {
     "__docId__": 75,
     "kind": "method",
-    "name": "push",
+    "name": "stop",
     "memberof": "src/playFabBackend.js~PlayFabBackend",
     "generator": false,
     "async": false,
     "static": false,
-    "longname": "src/playFabBackend.js~PlayFabBackend#push",
+    "longname": "src/playFabBackend.js~PlayFabBackend#stop",
     "access": null,
     "description": null,
-    "lineNumber": 208,
+    "lineNumber": 184,
     "undocument": true,
     "unknown": [
       {
@@ -1977,32 +1977,20 @@
         "tagValue": ""
       }
     ],
-    "params": [
-      {
-        "name": "state",
-        "types": [
-          "*"
-        ]
-      }
-    ],
-    "return": {
-      "types": [
-        "*"
-      ]
-    }
+    "params": []
   },
   {
     "__docId__": 76,
     "kind": "method",
-    "name": "clear",
+    "name": "fetch",
     "memberof": "src/playFabBackend.js~PlayFabBackend",
     "generator": false,
     "async": false,
     "static": false,
-    "longname": "src/playFabBackend.js~PlayFabBackend#clear",
+    "longname": "src/playFabBackend.js~PlayFabBackend#fetch",
     "access": null,
     "description": null,
-    "lineNumber": 222,
+    "lineNumber": 188,
     "undocument": true,
     "unknown": [
       {
@@ -2019,6 +2007,98 @@
   },
   {
     "__docId__": 77,
+    "kind": "method",
+    "name": "lastPush",
+    "memberof": "src/playFabBackend.js~PlayFabBackend",
+    "generator": false,
+    "async": false,
+    "static": false,
+    "longname": "src/playFabBackend.js~PlayFabBackend#lastPush",
+    "access": null,
+    "description": null,
+    "lineNumber": 200,
+    "undocument": true,
+    "unknown": [
+      {
+        "tagName": "@_undocument",
+        "tagValue": ""
+      }
+    ],
+    "params": [
+      {
+        "name": "state",
+        "types": [
+          "*"
+        ]
+      }
+    ],
+    "return": {
+      "types": [
+        "*"
+      ]
+    }
+  },
+  {
+    "__docId__": 78,
+    "kind": "method",
+    "name": "push",
+    "memberof": "src/playFabBackend.js~PlayFabBackend",
+    "generator": false,
+    "async": false,
+    "static": false,
+    "longname": "src/playFabBackend.js~PlayFabBackend#push",
+    "access": null,
+    "description": null,
+    "lineNumber": 230,
+    "undocument": true,
+    "unknown": [
+      {
+        "tagName": "@_undocument",
+        "tagValue": ""
+      }
+    ],
+    "params": [
+      {
+        "name": "state",
+        "types": [
+          "*"
+        ]
+      }
+    ],
+    "return": {
+      "types": [
+        "*"
+      ]
+    }
+  },
+  {
+    "__docId__": 79,
+    "kind": "method",
+    "name": "clear",
+    "memberof": "src/playFabBackend.js~PlayFabBackend",
+    "generator": false,
+    "async": false,
+    "static": false,
+    "longname": "src/playFabBackend.js~PlayFabBackend#clear",
+    "access": null,
+    "description": null,
+    "lineNumber": 244,
+    "undocument": true,
+    "unknown": [
+      {
+        "tagName": "@_undocument",
+        "tagValue": ""
+      }
+    ],
+    "params": [],
+    "return": {
+      "types": [
+        "*"
+      ]
+    }
+  },
+  {
+    "__docId__": 80,
     "kind": "file",
     "name": "src/scheduler.js",
     "content": "import $ from 'jquery'\nimport {assert} from './assert'\n\nconst defaultConfig = {\n  intervalMillis: 5 * 60 * 1000,\n  pushOnInterval: true,\n  pushOnClose: true,\n  // persister\n}\n\nexport class Scheduler {\n  constructor(config) {\n    this.config = Object.assign({}, defaultConfig, config)\n    this._push = () => {\n      return this.config.persister.push()\n    }\n    this._lastPush = () => {\n      return this.config.persister._lastPush()\n    }\n  }\n  isStarted() {\n    return !!this.runner\n  }\n  start() {\n    assert(!this.isStarted(), 'persist scheduler already started')\n    this.runner = {}\n    \n    if (this.config.pushOnInterval) {\n      this.runner.interval = window.setInterval(this._push, this.config.intervalMillis)\n    }\n    if (this.config.pushOnClose) {\n      $(window).on('unload', this._lastPush)\n    }\n    assert(this.isStarted())\n  }\n  stop() {\n    assert(this.isStarted(), 'persist scheduler already stopped (or never started)')\n    if (this.config.pushOnInterval) {\n      window.clearInterval(this.runner.interval)\n    }\n    if (this.config.pushOnClose) {\n      $(window).off('unload', this._lastPush)\n    }\n    delete this.runner\n    assert(!this.isStarted())\n  }\n}\n",
@@ -2029,7 +2109,7 @@
     "lineNumber": 1
   },
   {
-    "__docId__": 78,
+    "__docId__": 81,
     "kind": "variable",
     "name": "defaultConfig",
     "memberof": "src/scheduler.js",
@@ -2055,7 +2135,7 @@
     }
   },
   {
-    "__docId__": 79,
+    "__docId__": 82,
     "kind": "class",
     "name": "Scheduler",
     "memberof": "src/scheduler.js",
@@ -2077,7 +2157,7 @@
     "interface": false
   },
   {
-    "__docId__": 80,
+    "__docId__": 83,
     "kind": "constructor",
     "name": "constructor",
     "memberof": "src/scheduler.js~Scheduler",
@@ -2105,7 +2185,7 @@
     ]
   },
   {
-    "__docId__": 81,
+    "__docId__": 84,
     "kind": "member",
     "name": "config",
     "memberof": "src/scheduler.js~Scheduler",
@@ -2128,7 +2208,7 @@
     }
   },
   {
-    "__docId__": 82,
+    "__docId__": 85,
     "kind": "member",
     "name": "_push",
     "memberof": "src/scheduler.js~Scheduler",
@@ -2151,7 +2231,7 @@
     }
   },
   {
-    "__docId__": 83,
+    "__docId__": 86,
     "kind": "member",
     "name": "_lastPush",
     "memberof": "src/scheduler.js~Scheduler",
@@ -2174,7 +2254,7 @@
     }
   },
   {
-    "__docId__": 84,
+    "__docId__": 87,
     "kind": "method",
     "name": "isStarted",
     "memberof": "src/scheduler.js~Scheduler",
@@ -2200,7 +2280,7 @@
     }
   },
   {
-    "__docId__": 85,
+    "__docId__": 88,
     "kind": "method",
     "name": "start",
     "memberof": "src/scheduler.js~Scheduler",
@@ -2221,7 +2301,7 @@
     "params": []
   },
   {
-    "__docId__": 86,
+    "__docId__": 89,
     "kind": "member",
     "name": "runner",
     "memberof": "src/scheduler.js~Scheduler",
@@ -2244,7 +2324,7 @@
     }
   },
   {
-    "__docId__": 87,
+    "__docId__": 90,
     "kind": "method",
     "name": "stop",
     "memberof": "src/scheduler.js~Scheduler",
@@ -2265,7 +2345,7 @@
     "params": []
   },
   {
-    "__docId__": 89,
+    "__docId__": 92,
     "kind": "external",
     "name": "Infinity",
     "externalLink": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Infinity",
@@ -2277,7 +2357,7 @@
     "builtinExternal": true
   },
   {
-    "__docId__": 90,
+    "__docId__": 93,
     "kind": "external",
     "name": "NaN",
     "externalLink": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/NaN",
@@ -2289,7 +2369,7 @@
     "builtinExternal": true
   },
   {
-    "__docId__": 91,
+    "__docId__": 94,
     "kind": "external",
     "name": "undefined",
     "externalLink": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/undefined",
@@ -2301,7 +2381,7 @@
     "builtinExternal": true
   },
   {
-    "__docId__": 92,
+    "__docId__": 95,
     "kind": "external",
     "name": "null",
     "externalLink": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/null",
@@ -2313,7 +2393,7 @@
     "builtinExternal": true
   },
   {
-    "__docId__": 93,
+    "__docId__": 96,
     "kind": "external",
     "name": "Object",
     "externalLink": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Object",
@@ -2325,7 +2405,7 @@
     "builtinExternal": true
   },
   {
-    "__docId__": 94,
+    "__docId__": 97,
     "kind": "external",
     "name": "object",
     "externalLink": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Object",
@@ -2337,7 +2417,7 @@
     "builtinExternal": true
   },
   {
-    "__docId__": 95,
+    "__docId__": 98,
     "kind": "external",
     "name": "Function",
     "externalLink": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Function",
@@ -2349,7 +2429,7 @@
     "builtinExternal": true
   },
   {
-    "__docId__": 96,
+    "__docId__": 99,
     "kind": "external",
     "name": "function",
     "externalLink": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Function",
@@ -2361,7 +2441,7 @@
     "builtinExternal": true
   },
   {
-    "__docId__": 97,
+    "__docId__": 100,
     "kind": "external",
     "name": "Boolean",
     "externalLink": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Boolean",
@@ -2373,7 +2453,7 @@
     "builtinExternal": true
   },
   {
-    "__docId__": 98,
+    "__docId__": 101,
     "kind": "external",
     "name": "boolean",
     "externalLink": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Boolean",
@@ -2385,7 +2465,7 @@
     "builtinExternal": true
   },
   {
-    "__docId__": 99,
+    "__docId__": 102,
     "kind": "external",
     "name": "Symbol",
     "externalLink": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Symbol",
@@ -2397,7 +2477,7 @@
     "builtinExternal": true
   },
   {
-    "__docId__": 100,
+    "__docId__": 103,
     "kind": "external",
     "name": "Error",
     "externalLink": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Error",
@@ -2409,7 +2489,7 @@
     "builtinExternal": true
   },
   {
-    "__docId__": 101,
+    "__docId__": 104,
     "kind": "external",
     "name": "EvalError",
     "externalLink": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/EvalError",
@@ -2421,7 +2501,7 @@
     "builtinExternal": true
   },
   {
-    "__docId__": 102,
+    "__docId__": 105,
     "kind": "external",
     "name": "InternalError",
     "externalLink": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/InternalError",
@@ -2433,7 +2513,7 @@
     "builtinExternal": true
   },
   {
-    "__docId__": 103,
+    "__docId__": 106,
     "kind": "external",
     "name": "RangeError",
     "externalLink": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/RangeError",
@@ -2445,7 +2525,7 @@
     "builtinExternal": true
   },
   {
-    "__docId__": 104,
+    "__docId__": 107,
     "kind": "external",
     "name": "ReferenceError",
     "externalLink": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/ReferenceError",
@@ -2457,7 +2537,7 @@
     "builtinExternal": true
   },
   {
-    "__docId__": 105,
+    "__docId__": 108,
     "kind": "external",
     "name": "SyntaxError",
     "externalLink": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/SyntaxError",
@@ -2469,7 +2549,7 @@
     "builtinExternal": true
   },
   {
-    "__docId__": 106,
+    "__docId__": 109,
     "kind": "external",
     "name": "TypeError",
     "externalLink": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/TypeError",
@@ -2481,7 +2561,7 @@
     "builtinExternal": true
   },
   {
-    "__docId__": 107,
+    "__docId__": 110,
     "kind": "external",
     "name": "URIError",
     "externalLink": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/URIError",
@@ -2493,7 +2573,7 @@
     "builtinExternal": true
   },
   {
-    "__docId__": 108,
+    "__docId__": 111,
     "kind": "external",
     "name": "Number",
     "externalLink": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Number",
@@ -2505,7 +2585,7 @@
     "builtinExternal": true
   },
   {
-    "__docId__": 109,
+    "__docId__": 112,
     "kind": "external",
     "name": "number",
     "externalLink": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Number",
@@ -2517,7 +2597,7 @@
     "builtinExternal": true
   },
   {
-    "__docId__": 110,
+    "__docId__": 113,
     "kind": "external",
     "name": "Date",
     "externalLink": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Date",
@@ -2529,7 +2609,7 @@
     "builtinExternal": true
   },
   {
-    "__docId__": 111,
+    "__docId__": 114,
     "kind": "external",
     "name": "String",
     "externalLink": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/String",
@@ -2541,7 +2621,7 @@
     "builtinExternal": true
   },
   {
-    "__docId__": 112,
+    "__docId__": 115,
     "kind": "external",
     "name": "string",
     "externalLink": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/String",
@@ -2553,7 +2633,7 @@
     "builtinExternal": true
   },
   {
-    "__docId__": 113,
+    "__docId__": 116,
     "kind": "external",
     "name": "RegExp",
     "externalLink": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/RegExp",
@@ -2565,7 +2645,7 @@
     "builtinExternal": true
   },
   {
-    "__docId__": 114,
+    "__docId__": 117,
     "kind": "external",
     "name": "Array",
     "externalLink": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Array",
@@ -2577,7 +2657,7 @@
     "builtinExternal": true
   },
   {
-    "__docId__": 115,
+    "__docId__": 118,
     "kind": "external",
     "name": "Int8Array",
     "externalLink": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Int8Array",
@@ -2589,7 +2669,7 @@
     "builtinExternal": true
   },
   {
-    "__docId__": 116,
+    "__docId__": 119,
     "kind": "external",
     "name": "Uint8Array",
     "externalLink": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Uint8Array",
@@ -2601,7 +2681,7 @@
     "builtinExternal": true
   },
   {
-    "__docId__": 117,
+    "__docId__": 120,
     "kind": "external",
     "name": "Uint8ClampedArray",
     "externalLink": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Uint8ClampedArray",
@@ -2613,7 +2693,7 @@
     "builtinExternal": true
   },
   {
-    "__docId__": 118,
+    "__docId__": 121,
     "kind": "external",
     "name": "Int16Array",
     "externalLink": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Int16Array",
@@ -2625,7 +2705,7 @@
     "builtinExternal": true
   },
   {
-    "__docId__": 119,
+    "__docId__": 122,
     "kind": "external",
     "name": "Uint16Array",
     "externalLink": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Uint16Array",
@@ -2637,7 +2717,7 @@
     "builtinExternal": true
   },
   {
-    "__docId__": 120,
+    "__docId__": 123,
     "kind": "external",
     "name": "Int32Array",
     "externalLink": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Int32Array",
@@ -2649,7 +2729,7 @@
     "builtinExternal": true
   },
   {
-    "__docId__": 121,
+    "__docId__": 124,
     "kind": "external",
     "name": "Uint32Array",
     "externalLink": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Uint32Array",
@@ -2661,7 +2741,7 @@
     "builtinExternal": true
   },
   {
-    "__docId__": 122,
+    "__docId__": 125,
     "kind": "external",
     "name": "Float32Array",
     "externalLink": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Float32Array",
@@ -2673,7 +2753,7 @@
     "builtinExternal": true
   },
   {
-    "__docId__": 123,
+    "__docId__": 126,
     "kind": "external",
     "name": "Float64Array",
     "externalLink": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Float64Array",
@@ -2685,7 +2765,7 @@
     "builtinExternal": true
   },
   {
-    "__docId__": 124,
+    "__docId__": 127,
     "kind": "external",
     "name": "Map",
     "externalLink": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Map",
@@ -2697,7 +2777,7 @@
     "builtinExternal": true
   },
   {
-    "__docId__": 125,
+    "__docId__": 128,
     "kind": "external",
     "name": "Set",
     "externalLink": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Set",
@@ -2709,7 +2789,7 @@
     "builtinExternal": true
   },
   {
-    "__docId__": 126,
+    "__docId__": 129,
     "kind": "external",
     "name": "WeakMap",
     "externalLink": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/WeakMap",
@@ -2721,7 +2801,7 @@
     "builtinExternal": true
   },
   {
-    "__docId__": 127,
+    "__docId__": 130,
     "kind": "external",
     "name": "WeakSet",
     "externalLink": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/WeakSet",
@@ -2733,7 +2813,7 @@
     "builtinExternal": true
   },
   {
-    "__docId__": 128,
+    "__docId__": 131,
     "kind": "external",
     "name": "ArrayBuffer",
     "externalLink": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/ArrayBuffer",
@@ -2745,7 +2825,7 @@
     "builtinExternal": true
   },
   {
-    "__docId__": 129,
+    "__docId__": 132,
     "kind": "external",
     "name": "DataView",
     "externalLink": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/DataView",
@@ -2757,7 +2837,7 @@
     "builtinExternal": true
   },
   {
-    "__docId__": 130,
+    "__docId__": 133,
     "kind": "external",
     "name": "JSON",
     "externalLink": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/JSON",
@@ -2769,7 +2849,7 @@
     "builtinExternal": true
   },
   {
-    "__docId__": 131,
+    "__docId__": 134,
     "kind": "external",
     "name": "Promise",
     "externalLink": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Promise",
@@ -2781,7 +2861,7 @@
     "builtinExternal": true
   },
   {
-    "__docId__": 132,
+    "__docId__": 135,
     "kind": "external",
     "name": "Generator",
     "externalLink": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Generator",
@@ -2793,7 +2873,7 @@
     "builtinExternal": true
   },
   {
-    "__docId__": 133,
+    "__docId__": 136,
     "kind": "external",
     "name": "GeneratorFunction",
     "externalLink": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/GeneratorFunction",
@@ -2805,7 +2885,7 @@
     "builtinExternal": true
   },
   {
-    "__docId__": 134,
+    "__docId__": 137,
     "kind": "external",
     "name": "Reflect",
     "externalLink": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Reflect",
@@ -2817,7 +2897,7 @@
     "builtinExternal": true
   },
   {
-    "__docId__": 135,
+    "__docId__": 138,
     "kind": "external",
     "name": "Proxy",
     "externalLink": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Proxy",
@@ -2830,7 +2910,7 @@
     "builtinExternal": true
   },
   {
-    "__docId__": 137,
+    "__docId__": 140,
     "kind": "external",
     "name": "CanvasRenderingContext2D",
     "externalLink": "https://developer.mozilla.org/en-US/docs/Web/API/CanvasRenderingContext2D",
@@ -2842,7 +2922,7 @@
     "builtinExternal": true
   },
   {
-    "__docId__": 138,
+    "__docId__": 141,
     "kind": "external",
     "name": "DocumentFragment",
     "externalLink": "https://developer.mozilla.org/en-US/docs/Web/API/DocumentFragment",
@@ -2854,7 +2934,7 @@
     "builtinExternal": true
   },
   {
-    "__docId__": 139,
+    "__docId__": 142,
     "kind": "external",
     "name": "Element",
     "externalLink": "https://developer.mozilla.org/en-US/docs/Web/API/Element",
@@ -2866,7 +2946,7 @@
     "builtinExternal": true
   },
   {
-    "__docId__": 140,
+    "__docId__": 143,
     "kind": "external",
     "name": "Event",
     "externalLink": "https://developer.mozilla.org/en-US/docs/Web/API/Event",
@@ -2878,7 +2958,7 @@
     "builtinExternal": true
   },
   {
-    "__docId__": 141,
+    "__docId__": 144,
     "kind": "external",
     "name": "Node",
     "externalLink": "https://developer.mozilla.org/en-US/docs/Web/API/Node",
@@ -2890,7 +2970,7 @@
     "builtinExternal": true
   },
   {
-    "__docId__": 142,
+    "__docId__": 145,
     "kind": "external",
     "name": "NodeList",
     "externalLink": "https://developer.mozilla.org/en-US/docs/Web/API/NodeList",
@@ -2902,7 +2982,7 @@
     "builtinExternal": true
   },
   {
-    "__docId__": 143,
+    "__docId__": 146,
     "kind": "external",
     "name": "XMLHttpRequest",
     "externalLink": "https://developer.mozilla.org/en/docs/Web/API/XMLHttpRequest",
@@ -2914,7 +2994,7 @@
     "builtinExternal": true
   },
   {
-    "__docId__": 144,
+    "__docId__": 147,
     "kind": "external",
     "name": "AudioContext",
     "externalLink": "https://developer.mozilla.org/en/docs/Web/API/AudioContext",

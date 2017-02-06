@@ -1,6 +1,6 @@
 {
   "coverage": "0%",
-  "expectCount": 52,
+  "expectCount": 55,
   "actualCount": 0,
   "files": {
     "src/chunker.js": {
@@ -54,27 +54,30 @@
         68,
         77,
         27,
-        111,
         37,
+        111,
         31
       ]
     },
     "src/playFabBackend.js": {
-      "expectCount": 12,
+      "expectCount": 15,
       "actualCount": 0,
       "undocumentLines": [
         117,
         122,
-        222,
+        244,
         119,
         118,
-        166,
-        178,
-        154,
-        208,
+        188,
         159,
+        200,
+        154,
+        170,
+        230,
+        162,
+        165,
         136,
-        162
+        184
       ]
     },
     "src/scheduler.js": {

@@ -5174,7 +5174,7 @@ return /******/ (function(modules) { // webpackBootstrap
 	    value: function login() {
 	      var _this = this;
 	
-	      var customId = arguments.length > 0 && arguments[0] !== undefined ? arguments[0] : this.fetchAuth();
+	      var customId = arguments.length > 0 && arguments[0] !== undefined ? arguments[0] : this.auth.getRememberId();
 	
 	      return new Promise(function (resolve, reject) {
 	        _playfabSdkBrowser.PlayFabClientSDK.LoginWithCustomID({
@@ -5240,7 +5240,7 @@ return /******/ (function(modules) { // webpackBootstrap
 	        if (res.data.NewlyCreated) {
 	          // we guessed an unused id. Yay! This is the common case.
 	          console.debug('created account with new id. iter ' + iter);
-	          _this3.pushAuth(customId);
+	          _this3.setRememberId(customId);
 	          _this3.user = res;
 	          return resolve(res);
 	        }
@@ -5250,26 +5250,26 @@ return /******/ (function(modules) { // webpackBootstrap
 	      });
 	    }
 	  }, {
-	    key: 'fetchAuth',
-	    value: function fetchAuth() {
+	    key: 'getRememberId',
+	    value: function getRememberId() {
 	      var encoded = this.localStorage.getItem(this.key);
 	      return encoded ? JSON.parse(encoded).customId : null;
 	    }
 	  }, {
-	    key: 'pushAuth',
-	    value: function pushAuth(customId) {
+	    key: 'setRememberId',
+	    value: function setRememberId(customId) {
 	      this.localStorage.setItem(this.key, JSON.stringify({ customId: customId }));
 	    }
 	  }, {
-	    key: 'clearAuth',
-	    value: function clearAuth() {
+	    key: 'clearRememberId',
+	    value: function clearRememberId() {
 	      this.localStorage.removeItem(this.key);
 	    }
 	  }, {
 	    key: 'logout',
 	    value: function logout() {
 	      // Remove the custom id cookie, so we won't be logged in as this user upon page reload.
-	      this.clearAuth();
+	      this.clearRememberId();
 	      // Remove playfab's login data. There's no official method, but there's source code!
 	      // https://github.com/PlayFab/JavaScriptSDK/blob/master/PlayFabSDK/PlayFabClientApi.js
 	      _playfabSdkBrowser.PlayFab._internalSettings.sessionTicket = null;
@@ -5280,7 +5280,7 @@ return /******/ (function(modules) { // webpackBootstrap
 	  }, {
 	    key: 'loginOrCreate',
 	    value: function loginOrCreate() {
-	      var customId = this.fetchAuth();
+	      var customId = this.getRememberId();
 	      if (customId) {
 	        return this.login(customId);
 	      } else {
@@ -5352,9 +5352,38 @@ return /******/ (function(modules) { // webpackBootstrap
 	      this.stop();
 	    }
 	  }, {
-	    key: 'rememberLogin',
-	    value: function rememberLogin(customId) {
-	      this.auth.pushAuth(customId);
+	    key: 'getRememberId',
+	    value: function getRememberId() {
+	      this.auth.getRememberId();
+	    }
+	  }, {
+	    key: 'setRememberId',
+	    value: function setRememberId(customId) {
+	      this.auth.setRememberId(customId);
+	    }
+	  }, {
+	    key: 'setRememberIdFromResponse',
+	    value: function setRememberIdFromResponse(res) {
+	      var ret = res.data.InfoResultPayload.AccountInfo.CustomIdInfo.CustomId;
+	      this.auth.setRememberId(ret);
+	      return ret;
+	    }
+	  }, {
+	    key: 'pullRememberId',
+	    value: function pullRememberId() {
+	      var _this5 = this;
+	
+	      return new Promise(function (resolve, reject) {
+	        _playfabSdkBrowser.PlayFabClientSDK.GetPlayerCombinedInfo({
+	          InfoRequestParameters: { GetUserAccountInfo: true }
+	        }, function (res, error) {
+	          if (error) {
+	            reject(error);
+	          } else {
+	            resolve(_this5.setRememberIdFromResponse(res));
+	          }
+	        });
+	      });
 	    }
 	  }, {
 	    key: 'stop',
@@ -5366,14 +5395,14 @@ return /******/ (function(modules) { // webpackBootstrap
 	  }, {
 	    key: 'fetch',
 	    value: function fetch() {
-	      var _this5 = this;
+	      var _this6 = this;
 	
 	      return new Promise(function (resolve, reject) {
 	        _playfabSdkBrowser.PlayFabClientSDK.GetUserData({}, function (res, error) {
 	          if (error) {
 	            reject(error);
 	          } else {
-	            resolve(_this5._parseFetchUserData(res.data.Data));
+	            resolve(_this6._parseFetchUserData(res.data.Data));
 	          }
 	        });
 	      });
@@ -5414,11 +5443,11 @@ return /******/ (function(modules) { // webpackBootstrap
 	  }, {
 	    key: 'push',
 	    value: function push(state) {
-	      var _this6 = this;
+	      var _this7 = this;
 	
 	      // localstorage is synchronous and doesn't really need promises, but other backends need them
 	      return new Promise(function (resolve, reject) {
-	        _playfabSdkBrowser.PlayFabClientSDK.UpdateUserData({ Data: _defineProperty({}, _this6.config.stateKey, JSON.stringify(state)) }, function (res, error) {
+	        _playfabSdkBrowser.PlayFabClientSDK.UpdateUserData({ Data: _defineProperty({}, _this7.config.stateKey, JSON.stringify(state)) }, function (res, error) {
 	          if (error) {
 	            reject(error);
 	          } else {
@@ -5432,14 +5461,14 @@ return /******/ (function(modules) { // webpackBootstrap
 	  }, {
 	    key: 'clear',
 	    value: function clear() {
-	      var _this7 = this;
+	      var _this8 = this;
 	
 	      return new Promise(function (resolve, reject) {
-	        _playfabSdkBrowser.PlayFabClientSDK.UpdateUserData({ KeysToRemove: [_this7.config.stateKey] }, function (res, error) {
+	        _playfabSdkBrowser.PlayFabClientSDK.UpdateUserData({ KeysToRemove: [_this8.config.stateKey] }, function (res, error) {
 	          if (error) {
 	            reject(error);
 	          } else {
-	            resolve({ state: state, res: res });
+	            resolve({ res: res });
 	          }
 	        });
 	      });
@@ -6768,7 +6797,7 @@ return /******/ (function(modules) { // webpackBootstrap
 	    _classCallCheck(this, Persister);
 	
 	    this.config = Object.assign({}, defaultConfig, config);
-	    this.scheduler = new this.config.Scheduler(Object.assign({}, config, { persister: this }));
+	    this.scheduler = new this.config.Scheduler(Object.assign({}, this.config, { persister: this }));
 	  }
 	
 	  _createClass(Persister, [{
