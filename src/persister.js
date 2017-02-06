@@ -24,7 +24,7 @@ const defaultConfig = {
 export class Persister {
   constructor(config) {
     this.config = Object.assign({}, defaultConfig, config)
-    this.scheduler = new this.config.Scheduler(Object.assign({}, config, {persister: this}))
+    this.scheduler = new this.config.Scheduler(Object.assign({}, this.config, {persister: this}))
   }
 
   isStarted() { return this.scheduler.isStarted() }
